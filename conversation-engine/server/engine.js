@@ -26,8 +26,10 @@ function lessonCharacterLabel(turn) {
 const WRITING_STYLE =
   "Writing style rules (apply to everything you write):\n" +
   '- Plain, universal language. No corporate jargon, acronyms, or insider shorthand ("COB", "EOD", ' +
-  '"KPI", "circle back", "synergy", "bandwidth", etc.) — spell things out in plain words anyone, in ' +
-  'any industry, would immediately understand. Say "by the end of the day Friday", not "COB Friday".\n' +
+  '"KPI", "circle back", "synergy", "bandwidth", "1:1", etc.) — spell things out in plain words anyone, ' +
+  'in any industry, would immediately understand on first read, with nothing that could be misread. ' +
+  'Say "by the end of the day Friday", not "COB Friday". Say "one-on-one meeting", not "1:1". If you\'re ' +
+  "not sure a term is universally clear, spell it out instead.\n" +
   "- Never use an em dash or a semicolon. Use a period, comma, or a word like \"and\" or \"but\" instead.\n" +
   '- Avoid AI-sounding phrasing: no "it\'s not just X, it\'s Y" constructions, no "dive into" / "delve ' +
   'into", no "leverage" / "robust" / "seamless" / "testament to" / "boasts", no stacked adjective ' +

@@ -15,7 +15,7 @@ export const lessons = [
     scenarioTemplate:
       "The user's direct report has been repeatedly missing a specific, measurable commitment " +
       "(e.g. deadlines, quality bar, meeting prep) over the past few weeks. The user needs to raise " +
-      "it directly in a 1:1 without being harsh, while still landing the seriousness of the pattern.",
+      "it directly in a one-on-one meeting without being harsh, while still landing the seriousness of the pattern.",
     criteria: [
       "Named the specific behavior, not a vague generalization",
       "Stated the concrete impact of the behavior",
@@ -98,7 +98,7 @@ export const lessons = [
     ],
     personaNotes:
       "Alex is guarded at first because they know something is off. Reacts well to directness paired with " +
-      "empathy; shuts down or gets clipped if the user is either too harsh or too vague/avoidant.",
+      "empathy, but shuts down or gets clipped if the user is either too harsh or too vague and avoidant.",
   },
 ];
 
