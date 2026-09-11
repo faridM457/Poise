@@ -20,13 +20,28 @@ function lessonCharacterLabel(turn) {
   return turn.character ?? "NPC";
 }
 
+// Applied to every system prompt so all generated text — scenarios, dialogue,
+// feedback — reads as something a real person from any industry would say,
+// not corporate-speak or AI-flavored prose.
+const WRITING_STYLE =
+  "Writing style rules (apply to everything you write):\n" +
+  '- Plain, universal language. No corporate jargon, acronyms, or insider shorthand ("COB", "EOD", ' +
+  '"KPI", "circle back", "synergy", "bandwidth", etc.) — spell things out in plain words anyone, in ' +
+  'any industry, would immediately understand. Say "by the end of the day Friday", not "COB Friday".\n' +
+  "- Never use an em dash or a semicolon. Use a period, comma, or a word like \"and\" or \"but\" instead.\n" +
+  '- Avoid AI-sounding phrasing: no "it\'s not just X, it\'s Y" constructions, no "dive into" / "delve ' +
+  'into", no "leverage" / "robust" / "seamless" / "testament to" / "boasts", no stacked adjective ' +
+  "triplets, no overly polished or formal sentence structure. Write the way a real person would " +
+  "actually say or type it: plain, a little imperfect, natural rhythm.";
+
 // Stage 1 — Scenario Generation
 export async function generateScenario(lesson) {
   const system =
     "You generate fresh, concrete scenario specifics for a workplace-conversation training app. " +
     "The scenario must be realistic, specific (real-sounding names, numbers, incidents), and different " +
     "each time it's generated for the same lesson. Do not restate the guide criteria in your prose — " +
-    "those are supplied separately by the app.";
+    "those are supplied separately by the app.\n\n" +
+    WRITING_STYLE;
 
   const userMessage =
     `Lesson: ${lesson.title} (${lesson.unit})\n` +
@@ -72,7 +87,8 @@ export async function generateOpeningLine(lesson, scenario) {
   const system =
     `You are roleplaying as ${formatCharacter(lesson)} in a workplace conversation training app. ` +
     "Stay fully in character. Do not break the fourth wall, do not reference criteria or grading, " +
-    "and do not resolve the conversation yet — this is the opening line only.";
+    "and do not resolve the conversation yet, this is the opening line only.\n\n" +
+    WRITING_STYLE;
 
   const userMessage =
     `Scenario briefing: ${scenario.briefing}\n` +
@@ -125,7 +141,8 @@ export async function runTurn({ lesson, scenario, history, metCriteria, turnNumb
     "- Only include a criterion in newly_met_criteria if the user's LATEST message satisfies it — " +
     "criteria already met are tracked by the app, not by you.\n" +
     "- A single message can satisfy multiple criteria at once.\n" +
-    "- Never have the NPC state out loud which criteria were or weren't met.";
+    "- Never have the NPC state out loud which criteria were or weren't met.\n\n" +
+    WRITING_STYLE;
 
   const userMessage =
     `Scenario briefing: ${scenario.briefing}\n` +
@@ -204,7 +221,8 @@ export async function generateFeedback({ lesson, scenario, history, metCriteria,
 
   const system =
     "You write brief, constructive feedback for a workplace-conversation training app, based on a " +
-    "completed practice conversation. Be specific and human, not generic. 1-2 sentences only.";
+    "completed practice conversation. Be specific and human, not generic. 1-2 sentences only.\n\n" +
+    WRITING_STYLE;
 
   const userMessage =
     `Lesson: ${lesson.title}\n` +
