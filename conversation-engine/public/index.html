@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Conversation Engine — Local Test Site</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Conversation Engine — Local Test Site</h1>
+    <p class="subtitle">Debugging tool for the scenario → dialogue → grading pipeline. Not user-facing.</p>
+  </header>
+
+  <main>
+    <section id="lesson-picker">
+      <h2>1. Pick a lesson</h2>
+      <div id="lesson-list" class="lesson-list"></div>
+    </section>
+
+    <section id="scenario-panel" class="hidden">
+      <h2>2. Scenario</h2>
+      <div id="scenario-content"></div>
+      <div id="guide-panel">
+        <h3>Guide criteria</h3>
+        <ul id="criteria-list"></ul>
+      </div>
+      <button id="start-btn">Start conversation</button>
+    </section>
+
+    <section id="conversation-panel" class="hidden">
+      <h2>3. Conversation</h2>
+      <div id="chat-log" class="chat-log"></div>
+      <form id="turn-form">
+        <input id="turn-input" type="text" placeholder="Type your response…" autocomplete="off" />
+        <button type="submit">Send</button>
+      </form>
+      <p id="turn-counter"></p>
+    </section>
+
+    <section id="feedback-panel" class="hidden">
+      <h2>4. Feedback</h2>
+      <div id="feedback-content"></div>
+      <button id="reset-btn">Reset &amp; run again</button>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
