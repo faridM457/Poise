@@ -144,6 +144,12 @@ export async function runTurn({ lesson, scenario, history, metCriteria, turnNumb
     "criteria already met are tracked by the app, not by you.\n" +
     "- A single message can satisfy multiple criteria at once.\n" +
     "- Never have the NPC state out loud which criteria were or weren't met.\n\n" +
+    "Settled check (independent of criteria and appropriateness):\n" +
+    "- Set conversation_settled to true only if the core issue has been explicitly resolved by both " +
+    "sides, e.g. a concrete next step was agreed to and both people consider it settled, such that " +
+    "another turn would just repeat the same agreement.\n" +
+    "- Set it to false if there's still unresolved tension, open questions, or room for the " +
+    "conversation to productively continue.\n\n" +
     WRITING_STYLE;
 
   const userMessage =
@@ -170,8 +176,15 @@ export async function runTurn({ lesson, scenario, history, metCriteria, turnNumb
         type: "string",
         enum: ["normal", "mild_flag", "severe_flag"],
       },
+      conversation_settled: {
+        type: "boolean",
+        description:
+          "True only if the core issue has been explicitly resolved by both sides and another turn " +
+          "would just repeat the same agreement. False if there's still unresolved tension or room to " +
+          "continue productively.",
+      },
     },
-    required: ["npc_reply", "newly_met_criteria", "appropriateness"],
+    required: ["npc_reply", "newly_met_criteria", "appropriateness", "conversation_settled"],
   };
 
   const result = await structuredCall({
@@ -198,6 +211,13 @@ export async function runTurn({ lesson, scenario, history, metCriteria, turnNumb
       ended = true;
       resolution = "approving";
     } else if (turnNumber >= MAX_USER_TURNS) {
+      ended = true;
+      resolution = "scaled";
+    } else if (result.conversation_settled && turnNumber >= 2) {
+      // The conversation has clearly wound down before the turn cap — end
+      // here with the same partial-credit outcome the cap would've reached,
+      // instead of padding out turns that won't teach anything new. This
+      // doesn't change what counts as "met", only when the loop stops.
       ended = true;
       resolution = "scaled";
     }

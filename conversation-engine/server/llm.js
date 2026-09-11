@@ -33,7 +33,7 @@ export async function structuredCall({ system, messages, schema }) {
 
     if (message.type === "result") {
       if (message.subtype === "success" && !message.is_error) {
-        return message.structured_output;
+        return sanitizeStructuredOutput(message.structured_output);
       }
 
       const reason = message.subtype === "success" ? message.result : message.subtype;
@@ -42,6 +42,22 @@ export async function structuredCall({ system, messages, schema }) {
   }
 
   throw new Error("Agent SDK query ended without producing a result.");
+}
+
+// Prompting alone doesn't reliably keep the model off em dashes and
+// semicolons (especially on a lighter model), so enforce it deterministically
+// on every string the model returns rather than trusting compliance.
+function sanitizeStructuredOutput(value) {
+  if (typeof value === "string") {
+    return value.replace(/\s*—\s*/g, ", ").replace(/\s*;\s*/g, ", ");
+  }
+  if (Array.isArray(value)) {
+    return value.map(sanitizeStructuredOutput);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, sanitizeStructuredOutput(v)]));
+  }
+  return value;
 }
 
 function describeAgentFailure(reason, assistantError) {
