@@ -1,41 +1,58 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { query } from "@anthropic-ai/claude-agent-sdk";
 
-const MODEL = "claude-sonnet-5";
+// Model alias resolved by the Claude Code CLI the SDK shells out to
+// ('haiku' | 'sonnet' | 'opus', or a full model ID). Defaults to the
+// cheapest tier since each engine stage is a short, single-shot call.
+const MODEL = process.env.CLAUDE_ENGINE_MODEL || "haiku";
 
-let client;
-function getClient() {
-  if (!client) {
-    if (!process.env.ANTHROPIC_API_KEY) {
-      throw new Error("ANTHROPIC_API_KEY is not set. Copy .env.example to .env and add your key.");
+// Runs a single-turn query against Claude via the Agent SDK, which shells out
+// to the local Claude Code CLI and reuses its login — a Claude Pro/Max
+// subscription login counts against plan usage, not per-token API billing.
+// `outputFormat: {type: "json_schema"}` forces the turn to end with a
+// response matching `schema`, so callers get back parsed, structured JSON
+// instead of free text.
+export async function structuredCall({ system, messages, schema }) {
+  const prompt = messages.map((m) => m.content).join("\n\n");
+
+  let assistantError = null;
+
+  for await (const message of query({
+    prompt,
+    options: {
+      model: MODEL,
+      systemPrompt: system,
+      outputFormat: { type: "json_schema", schema },
+      tools: [],
+      maxTurns: 4,
+      permissionMode: "default",
+    },
+  })) {
+    if (message.type === "assistant" && message.error) {
+      assistantError = message.error;
     }
-    client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+    if (message.type === "result") {
+      if (message.subtype === "success" && !message.is_error) {
+        return message.structured_output;
+      }
+
+      const reason = message.subtype === "success" ? message.result : message.subtype;
+      throw new Error(describeAgentFailure(reason, assistantError));
+    }
   }
-  return client;
+
+  throw new Error("Agent SDK query ended without producing a result.");
 }
 
-// Forces the model to respond via a single tool call matching `schema`,
-// so callers get back parsed, structured JSON instead of free text.
-export async function structuredCall({ system, messages, schema, toolName, maxTokens = 1024 }) {
-  const anthropic = getClient();
-
-  const response = await anthropic.messages.create({
-    model: MODEL,
-    max_tokens: maxTokens,
-    system,
-    messages,
-    tools: [
-      {
-        name: toolName,
-        description: `Return the result of this step as structured data matching the ${toolName} schema.`,
-        input_schema: schema,
-      },
-    ],
-    tool_choice: { type: "tool", name: toolName },
-  });
-
-  const toolUse = response.content.find((block) => block.type === "tool_use");
-  if (!toolUse) {
-    throw new Error("LLM response did not include the expected structured tool call.");
+function describeAgentFailure(reason, assistantError) {
+  if (assistantError === "rate_limit") {
+    return "Hit your Claude Pro/Max plan's usage limit for this window. Wait for it to reset, or set CLAUDE_ENGINE_MODEL and try a lighter model.";
   }
-  return toolUse.input;
+  if (assistantError === "authentication_failed" || assistantError === "oauth_org_not_allowed") {
+    return "Not logged in to Claude Code (or the session is invalid). Run `claude login` and try again.";
+  }
+  if (assistantError === "billing_error" || assistantError === "account_on_hold") {
+    return `Claude account billing issue: ${assistantError}.`;
+  }
+  return `Agent SDK call failed: ${reason}`;
 }

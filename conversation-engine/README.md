@@ -9,18 +9,31 @@ spec this implements.
 
 ```bash
 npm install
-cp .env.example .env   # then add your ANTHROPIC_API_KEY
+claude login   # if you haven't already logged Claude Code into your account
+cp .env.example .env
 npm start
 ```
 
 Open http://localhost:3000.
 
+No `ANTHROPIC_API_KEY` needed: the backend calls Claude through the **Claude Agent SDK**
+(`@anthropic-ai/claude-agent-sdk`), which shells out to your local Claude Code CLI and reuses
+whatever account it's logged into. If that's a Claude Pro/Max subscription, calls count
+against your plan's usage instead of per-token API billing — same mechanism the `manifold`
+repo uses. Model defaults to `haiku` to go easy on plan usage; override with
+`CLAUDE_ENGINE_MODEL=sonnet` (or `opus`, or a full model ID) in `.env`.
+
+Because it drives an actual Claude Code subprocess per call, each engine stage is slower than
+a direct Messages API call and consumes your plan's rate-limit window rather than dollars —
+worth keeping in mind if you hit "rate_limit" errors mid-testing.
+
 ## Structure
 
 - `server/lessons.js` — hardcoded lesson definitions (title, character, scenario template,
   guide criteria, persona behavior notes).
-- `server/llm.js` — thin Anthropic client wrapper that forces structured (tool-call) JSON
-  output for each engine stage.
+- `server/llm.js` — wraps `@anthropic-ai/claude-agent-sdk`'s `query()`, using
+  `outputFormat: {type: "json_schema"}` to force each call to end in structured JSON matching
+  the stage's schema.
 - `server/engine.js` — the engine stages from the spec:
   - `generateScenario` (Stage 1)
   - `generateOpeningLine` (Stage 3)
