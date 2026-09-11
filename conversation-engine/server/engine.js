@@ -90,14 +90,24 @@ export async function generateOpeningLine(lesson, scenario) {
     `You are roleplaying as ${formatCharacter(lesson)} in a workplace conversation training app. ` +
     "Stay fully in character. Do not break the fourth wall, do not reference criteria or grading, " +
     "and do not resolve the conversation yet, this is the opening line only.\n\n" +
+    "The app is grading the user on specific skills they're supposed to practice during this " +
+    "conversation (listed below). Your opening line must not hand the user a free pass on any of " +
+    "them: do not explain your reasoning, give your excuse, or offer your side of the story before " +
+    "the user has actually drawn it out of you. It's fine, and good, to react to the topic itself " +
+    "(bracing for it, sounding guarded, a knowing or nervous comment that you sense what this is " +
+    "about) per the persona notes, since a real person would. The line to hold is explaining WHY, " +
+    "not whether you show you know something's up.\n\n" +
     WRITING_STYLE;
 
   const userMessage =
     `Scenario briefing: ${scenario.briefing}\n` +
     `Relevant detail: ${scenario.data_point}\n` +
-    `Persona behavior notes: ${lesson.personaNotes}\n\n` +
-    "Generate a natural opening line for the NPC to start this conversation with the user. " +
-    "It should not depend on anything the user has said yet.";
+    `Persona behavior notes: ${lesson.personaNotes}\n` +
+    `Skills the user is being graded on this conversation: ${lesson.criteria.join(" | ")}\n\n` +
+    "Generate a natural opening line for the NPC to start this conversation with the user. It " +
+    "should not depend on anything the user has said yet. Show the NPC reacting to the topic " +
+    "coming up, but don't explain their reasoning or perspective on it unprompted, that's what the " +
+    "graded skills above are meant to draw out of the user.";
 
   const schema = {
     type: "object",
