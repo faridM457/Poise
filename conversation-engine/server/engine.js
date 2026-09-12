@@ -145,6 +145,14 @@ export async function generateOpeningLine(lesson, scenario) {
 export async function runTurn({ lesson, scenario, history, metCriteria, turnNumber, userResponse }) {
   const unmetCriteria = lesson.criteria.filter((c) => !metCriteria.includes(c));
 
+  const demoBlock = lesson.demoExchange
+    ? "Example of the tone and resistance level for this lesson's difficulty tier " +
+      `(${lesson.difficultyLabel ?? "this tier"}) — match this LEVEL of pushback, not the literal ` +
+      "wording or specifics, since the actual scenario will be different:\n" +
+      `User: "${lesson.demoExchange.user}"\n` +
+      `NPC: "${lesson.demoExchange.npc}"\n\n`
+    : "";
+
   const system =
     `You are roleplaying as ${formatCharacter(lesson)} in a workplace conversation training app, and ` +
     "you also grade the user's latest response against fixed skill criteria. Stay fully in character " +
@@ -152,6 +160,7 @@ export async function runTurn({ lesson, scenario, history, metCriteria, turnNumb
     "Persona behavior notes: " +
     lesson.personaNotes +
     "\n\n" +
+    demoBlock +
     "Appropriateness grading (applies to the user's latest message only, independent of criteria):\n" +
     '- "normal": professional, on-topic.\n' +
     '- "mild_flag": unprofessional but not severe (e.g. dismissive, mildly rude, off-topic) — the ' +
@@ -164,6 +173,17 @@ export async function runTurn({ lesson, scenario, history, metCriteria, turnNumb
     "criteria already met are tracked by the app, not by you.\n" +
     "- A single message can satisfy multiple criteria at once.\n" +
     "- Never have the NPC state out loud which criteria were or weren't met.\n\n" +
+    "Respect and empathy grading (applies to the user's latest message only, independent of criteria, " +
+    "appropriateness, and resolution — this never ends the conversation or blocks a criterion, it's a " +
+    "separate coaching signal):\n" +
+    '- "strong": genuinely warm or empathetic given the moment, e.g. acknowledges the NPC\'s feelings ' +
+    "or situation skillfully, especially when the NPC has expressed hardship or vulnerability.\n" +
+    '- "adequate": fine and businesslike. This is a perfectly reasonable grade for a low-stakes, ' +
+    "logistics-only moment where no particular warmth is called for.\n" +
+    '- "minimal": flat, perfunctory, or cold given the moment, e.g. brushing past something the NPC ' +
+    "just expressed real hardship or vulnerability about without acknowledging it, even if the message " +
+    "isn't rude enough to be a mild_flag.\n" +
+    "Judge this relative to how emotionally loaded the moment is, not on an absolute scale.\n\n" +
     "Settled check (independent of criteria and appropriateness):\n" +
     "- Set conversation_settled to true only if the core issue has been explicitly resolved by both " +
     "sides, e.g. a concrete next step was agreed to and both people consider it settled, such that " +
@@ -195,6 +215,13 @@ export async function runTurn({ lesson, scenario, history, metCriteria, turnNumb
         type: "string",
         enum: ["normal", "mild_flag", "severe_flag"],
       },
+      respect_and_empathy: {
+        type: "string",
+        enum: ["minimal", "adequate", "strong"],
+        description:
+          "How warmly/empathetically the user's latest message came across given the moment, " +
+          "independent of criteria and appropriateness.",
+      },
       conversation_settled: {
         type: "boolean",
         description:
@@ -203,7 +230,7 @@ export async function runTurn({ lesson, scenario, history, metCriteria, turnNumb
           "continue productively.",
       },
     },
-    required: ["npc_reply", "newly_met_criteria", "appropriateness", "conversation_settled"],
+    required: ["npc_reply", "newly_met_criteria", "appropriateness", "respect_and_empathy", "conversation_settled"],
   };
 
   const result = await structuredCall({
@@ -245,6 +272,7 @@ export async function runTurn({ lesson, scenario, history, metCriteria, turnNumb
   return {
     npc_reply: result.npc_reply,
     appropriateness: result.appropriateness,
+    respect_and_empathy: result.respect_and_empathy,
     newly_met_criteria: result.newly_met_criteria,
     updated_met_criteria: updatedMetCriteria,
     deduction,
@@ -254,15 +282,31 @@ export async function runTurn({ lesson, scenario, history, metCriteria, turnNumb
 }
 
 // Stage 6 — Feedback
-export async function generateFeedback({ lesson, scenario, history, metCriteria, deductionCount, resolution }) {
+export async function generateFeedback({
+  lesson,
+  scenario,
+  history,
+  metCriteria,
+  deductionCount,
+  resolution,
+  empathyLevels = [],
+}) {
   const checklist = lesson.criteria.map((criterion) => ({
     criterion,
     met: metCriteria.includes(criterion),
   }));
 
+  const empathySummary = {
+    strong: empathyLevels.filter((l) => l === "strong").length,
+    adequate: empathyLevels.filter((l) => l === "adequate").length,
+    minimal: empathyLevels.filter((l) => l === "minimal").length,
+  };
+
   const system =
     "You write brief, constructive feedback for a workplace-conversation training app, based on a " +
-    "completed practice conversation. Be specific and human, not generic. 1-2 sentences only.\n\n" +
+    "completed practice conversation. Be specific and human, not generic. 1-2 sentences only. If the " +
+    "user's respect/empathy grades were mixed or trended low (see below), work that into the feedback " +
+    "specifically, not just the content checklist.\n\n" +
     WRITING_STYLE;
 
   const userMessage =
@@ -273,6 +317,7 @@ export async function generateFeedback({ lesson, scenario, history, metCriteria,
       .map((c) => `- ${c.criterion}: ${c.met ? "met" : "not met"}`)
       .join("\n")}\n` +
     `Professionalism deductions: ${deductionCount}\n` +
+    `Respect/empathy grades across the conversation, in order: ${empathyLevels.length ? empathyLevels.join(" | ") : "(none)"}\n` +
     `Overall resolution: ${resolution}\n\n` +
     "Write a 1-2 sentence feedback summary covering what went well and what to improve next time.";
 
@@ -295,6 +340,7 @@ export async function generateFeedback({ lesson, scenario, history, metCriteria,
   return {
     checklist,
     deductionCount,
+    empathySummary,
     resolution,
     feedbackLine: result.feedback_line,
   };

@@ -7,6 +7,7 @@ const state = {
   history: [], // { role: "npc" | "user", text, character? }
   metCriteria: [],
   deductionCount: 0,
+  empathyLevels: [], // "minimal" | "adequate" | "strong" per turn
   turnNumber: 0,
   ended: false,
 };
@@ -48,6 +49,7 @@ function resetState() {
   state.history = [];
   state.metCriteria = [];
   state.deductionCount = 0;
+  state.empathyLevels = [];
   state.turnNumber = 0;
   state.ended = false;
 }
@@ -153,6 +155,7 @@ el.turnForm.addEventListener("submit", async (e) => {
     });
     state.metCriteria = result.updated_met_criteria;
     if (result.deduction) state.deductionCount += 1;
+    if (result.respect_and_empathy) state.empathyLevels.push(result.respect_and_empathy);
 
     renderChatLog();
     updateCriteriaDisplay();
@@ -182,6 +185,7 @@ async function finalize(resolution) {
     history: state.history,
     metCriteria: state.metCriteria,
     deductionCount: state.deductionCount,
+    empathyLevels: state.empathyLevels,
     resolution,
   });
 
@@ -198,6 +202,10 @@ async function finalize(resolution) {
     ${checklistHtml}
     <h3>Professionalism deductions</h3>
     <p>${feedback.deductionCount} mild flag(s) recorded during this conversation.</p>
+    <h3>Empathy and respect</h3>
+    <p>${feedback.empathySummary.strong} strong, ${feedback.empathySummary.adequate} adequate, ${feedback.empathySummary.minimal} minimal (across ${
+      feedback.empathySummary.strong + feedback.empathySummary.adequate + feedback.empathySummary.minimal
+    } graded turns).</p>
     <h3>Delivery score</h3>
     <p><em>Not part of this milestone.</em></p>
     <h3>Feedback</h3>

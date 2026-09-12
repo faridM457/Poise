@@ -72,7 +72,7 @@ app.post("/api/feedback", async (req, res) => {
   try {
     const lesson = getLessonById(req.body.lessonId);
     if (!lesson) return res.status(404).json({ error: "Unknown lessonId" });
-    const { scenario, history, metCriteria, deductionCount, resolution } = req.body;
+    const { scenario, history, metCriteria, deductionCount, resolution, empathyLevels } = req.body;
 
     const feedback = await generateFeedback({
       lesson,
@@ -81,6 +81,7 @@ app.post("/api/feedback", async (req, res) => {
       metCriteria,
       deductionCount,
       resolution,
+      empathyLevels,
     });
 
     res.json(feedback);
