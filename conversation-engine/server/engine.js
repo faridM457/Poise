@@ -30,11 +30,19 @@ const WRITING_STYLE =
   'in any industry, would immediately understand on first read, with nothing that could be misread. ' +
   'Say "by the end of the day Friday", not "COB Friday". Say "one-on-one meeting", not "1:1". If you\'re ' +
   "not sure a term is universally clear, spell it out instead.\n" +
-  "- Never use an em dash or a semicolon. Use a period, comma, or a word like \"and\" or \"but\" instead.\n" +
+  "- Never use an em dash, a semicolon, an ellipsis (...), or a dash/hyphen used to separate clauses " +
+  '(e.g. not "I mean - it\'s fine"). A hyphen is only okay inside a single compound word like ' +
+  '"one-on-one", never with spaces around it. Use a period, comma, or a word like "and" or "but" ' +
+  "instead.\n" +
   '- Avoid AI-sounding phrasing: no "it\'s not just X, it\'s Y" constructions, no "dive into" / "delve ' +
   'into", no "leverage" / "robust" / "seamless" / "testament to" / "boasts", no stacked adjective ' +
   "triplets, no overly polished or formal sentence structure. Write the way a real person would " +
-  "actually say or type it: plain, a little imperfect, natural rhythm.";
+  "actually say or type it: plain, a little imperfect, natural rhythm.\n" +
+  "- This text renders as plain words directly on screen, so any dialogue field (an opening line or " +
+  "an in-character reply) must contain ONLY the literal words the person says out loud. Never include " +
+  "stage directions, action descriptions, or narration of physical behavior, in asterisks, brackets, " +
+  "parentheses, or otherwise (no \"*slouches in chair*\", no \"(sighs)\", no \"[pause]\"). If you want " +
+  "to convey tone or body language, do it through the word choice and phrasing itself, not narration.";
 
 // Stage 1 — Scenario Generation
 export async function generateScenario(lesson) {

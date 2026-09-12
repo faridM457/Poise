@@ -44,12 +44,14 @@ export async function structuredCall({ system, messages, schema }) {
   throw new Error("Agent SDK query ended without producing a result.");
 }
 
-// Prompting alone doesn't reliably keep the model off em dashes and
-// semicolons (especially on a lighter model), so enforce it deterministically
-// on every string the model returns rather than trusting compliance.
+// Prompting alone doesn't reliably keep the model off em dashes, stage
+// directions, and the like (especially on a lighter model), so enforce it
+// deterministically on every string the model returns rather than trusting
+// compliance. Dialogue fields must render as plain spoken text on screen —
+// no asterisk/bracket stage directions, no ellipses, no dash-as-punctuation.
 function sanitizeStructuredOutput(value) {
   if (typeof value === "string") {
-    return value.replace(/\s*—\s*/g, ", ").replace(/\s*;\s*/g, ", ");
+    return sanitizeText(value);
   }
   if (Array.isArray(value)) {
     return value.map(sanitizeStructuredOutput);
@@ -58,6 +60,19 @@ function sanitizeStructuredOutput(value) {
     return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, sanitizeStructuredOutput(v)]));
   }
   return value;
+}
+
+function sanitizeText(text) {
+  return text
+    .replace(/\*[^*]*\*/g, "") // *action* stage directions
+    .replace(/\[[^\]]*\]/g, "") // [action] stage directions
+    .replace(/\s*[—–]\s*/g, ", ") // em/en dash used as punctuation
+    .replace(/\s+-\s+/g, ", ") // " - " used as a dash (spaced hyphen), not compound words like "one-on-one"
+    .replace(/^-\s+/g, "") // leading "- " bullet-style dash
+    .replace(/\s*;\s*/g, ", ") // semicolon
+    .replace(/\.{2,}|…/g, ".") // ellipsis
+    .replace(/[ \t]{2,}/g, " ") // collapse whitespace left behind by removals
+    .trim();
 }
 
 function describeAgentFailure(reason, assistantError) {
