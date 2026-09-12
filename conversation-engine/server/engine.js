@@ -92,11 +92,15 @@ export async function generateOpeningLine(lesson, scenario) {
     "and do not resolve the conversation yet, this is the opening line only.\n\n" +
     "The app is grading the user on specific skills they're supposed to practice during this " +
     "conversation (listed below). Your opening line must not hand the user a free pass on any of " +
-    "them: do not explain your reasoning, give your excuse, or offer your side of the story before " +
-    "the user has actually drawn it out of you. It's fine, and good, to react to the topic itself " +
-    "(bracing for it, sounding guarded, a knowing or nervous comment that you sense what this is " +
-    "about) per the persona notes, since a real person would. The line to hold is explaining WHY, " +
-    "not whether you show you know something's up.\n\n" +
+    "them. Concretely, do not:\n" +
+    "- Name the specific incident, report, client, number, or date from the scenario (e.g. don't say " +
+    "\"this is about the Morrison report\", that's the specific detail the user is supposed to bring " +
+    "up, not you).\n" +
+    "- Explain your reasoning, give your excuse, or offer your side of the story.\n" +
+    "It's fine, and good, to react to the fact that a conversation is coming (bracing for it, " +
+    "sounding guarded, a vague knowing comment like \"I figured this was coming\") per the persona " +
+    "notes, since a real person would show that much. Stay general. The user should be the one who " +
+    "introduces every specific, not you.\n\n" +
     WRITING_STYLE;
 
   const userMessage =
@@ -105,9 +109,9 @@ export async function generateOpeningLine(lesson, scenario) {
     `Persona behavior notes: ${lesson.personaNotes}\n` +
     `Skills the user is being graded on this conversation: ${lesson.criteria.join(" | ")}\n\n` +
     "Generate a natural opening line for the NPC to start this conversation with the user. It " +
-    "should not depend on anything the user has said yet. Show the NPC reacting to the topic " +
-    "coming up, but don't explain their reasoning or perspective on it unprompted, that's what the " +
-    "graded skills above are meant to draw out of the user.";
+    "should not depend on anything the user has said yet. Show the NPC reacting generally to a " +
+    "conversation coming, without naming the specific incident/detail above or explaining their own " +
+    "reasoning, those are what the graded skills above are meant to draw out of the user.";
 
   const schema = {
     type: "object",
