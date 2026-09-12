@@ -91,33 +91,55 @@ export async function generateScenario(lesson) {
 
 // Stage 3 — Opening NPC Line
 export async function generateOpeningLine(lesson, scenario) {
+  // Most lessons need the NPC to stay neutral so the user is the one who
+  // surfaces the specifics the criteria grade them on. But in a handful of
+  // lessons (flagged with npcInitiatesWithKnownRequest) the NPC already made
+  // a specific request before this conversation started — the request is
+  // mutual common knowledge, not something the user needs to introduce, so
+  // forcing the NPC to stay vague about it would be unrealistic (a real
+  // person waiting on something they asked for would just ask about it).
+  const openingRules = lesson.npcInitiatesWithKnownRequest
+    ? "This conversation is happening because you already made a specific request that both people " +
+      "know about (see the scenario briefing) — it's realistic, and fine, for your opening line to " +
+      "reference or check in about that known request directly (e.g. \"hey, were you able to look at " +
+      "that thing I asked about?\"). This doesn't hand the user a free pass on the graded skills below: " +
+      "the request itself isn't something they need to introduce, their job is to respond to it " +
+      "(decline, renegotiate, propose an alternative). Do not react to a response yet, and do not " +
+      "sound like you already expect to be told no, this is just you raising or checking in on the " +
+      "request.\n\n"
+    : "The app is grading the user on specific skills they're supposed to practice during this " +
+      "conversation (listed below). Your opening line must not hand the user a free pass on any of " +
+      "them. Concretely, do not:\n" +
+      "- Name the specific incident, report, client, number, or date from the scenario (e.g. don't say " +
+      "\"this is about the Morrison report\", that's the specific detail the user is supposed to bring " +
+      "up, not you).\n" +
+      "- Explain your reasoning, give your excuse, or offer your side of the story.\n" +
+      "- Presuppose you already know what this is about, or sound resigned, guilty, or like you're " +
+      "bracing for bad news. Open neutrally, the way you'd start any ordinary check-in, for example a " +
+      "plain greeting or a simple question like \"What did you want to talk about?\" Any wariness or " +
+      "defensiveness from the persona notes should only show up in how you respond after the user " +
+      "actually raises the topic, not in this first line. The user should be the one who introduces " +
+      "every specific, not you.\n\n";
+
   const system =
     `You are roleplaying as ${formatCharacter(lesson)} in a workplace conversation training app. ` +
     "Stay fully in character. Do not break the fourth wall, do not reference criteria or grading, " +
     "and do not resolve the conversation yet, this is the opening line only.\n\n" +
-    "The app is grading the user on specific skills they're supposed to practice during this " +
-    "conversation (listed below). Your opening line must not hand the user a free pass on any of " +
-    "them. Concretely, do not:\n" +
-    "- Name the specific incident, report, client, number, or date from the scenario (e.g. don't say " +
-    "\"this is about the Morrison report\", that's the specific detail the user is supposed to bring " +
-    "up, not you).\n" +
-    "- Explain your reasoning, give your excuse, or offer your side of the story.\n" +
-    "- Presuppose you already know what this is about, or sound resigned, guilty, or like you're " +
-    "bracing for bad news. Open neutrally, the way you'd start any ordinary check-in, for example a " +
-    "plain greeting or a simple question like \"What did you want to talk about?\" Any wariness or " +
-    "defensiveness from the persona notes should only show up in how you respond after the user " +
-    "actually raises the topic, not in this first line. The user should be the one who introduces " +
-    "every specific, not you.\n\n" +
+    openingRules +
     WRITING_STYLE;
 
   const userMessage =
     `Scenario briefing: ${scenario.briefing}\n` +
     `Persona behavior notes: ${lesson.personaNotes}\n` +
     `Skills the user is being graded on this conversation: ${lesson.criteria.join(" | ")}\n\n` +
-    "Generate a natural, neutral opening line for the NPC to start this conversation with the user. " +
-    "It should not depend on anything the user has said yet, should not presuppose the topic or " +
-    "sound guarded or resigned, and must not name the specific incident/detail above or explain " +
-    "their own reasoning, those are what the graded skills above are meant to draw out of the user.";
+    (lesson.npcInitiatesWithKnownRequest
+      ? "Generate a natural opening line where the NPC raises or checks in on the request they already " +
+        "made (per the scenario briefing). It should not depend on anything the user has said yet, and " +
+        "should not react to a decline/negotiation that hasn't happened yet."
+      : "Generate a natural, neutral opening line for the NPC to start this conversation with the user. " +
+        "It should not depend on anything the user has said yet, should not presuppose the topic or " +
+        "sound guarded or resigned, and must not name the specific incident/detail above or explain " +
+        "their own reasoning, those are what the graded skills above are meant to draw out of the user.");
 
   const schema = {
     type: "object",

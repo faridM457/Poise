@@ -327,6 +327,12 @@ export const lessons = [
     title: "Turning Down an Unreasonable Ask",
     isCheckpoint: false,
     difficultyLabel: "moderate resistance",
+    // The ask itself already exists before this conversation starts (Avery
+    // made it) — unlike most lessons, where the NPC must stay neutral so
+    // the user is the one to surface the specifics, here it's realistic
+    // (and doesn't hand away any graded skill) for the opening line to
+    // reference the known, pending ask. See engine.js's generateOpeningLine.
+    npcInitiatesWithKnownRequest: true,
     character: {
       name: "Avery",
       role: "Peer, coworker on an adjacent team",
@@ -434,6 +440,7 @@ export const lessons = [
     title: "Checkpoint: Boundaries",
     isCheckpoint: true,
     difficultyLabel: "moderate resistance",
+    npcInitiatesWithKnownRequest: true,
     character: {
       name: "Quinn",
       role: "Peer, coworker on an adjacent team",
