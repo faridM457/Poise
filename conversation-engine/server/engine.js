@@ -59,22 +59,20 @@ export async function generateScenario(lesson) {
     `Scenario template: ${lesson.scenarioTemplate}\n` +
     `Persona behavior notes: ${lesson.personaNotes}\n\n` +
     "Generate a unique instance of this scenario: a short briefing (2-4 sentences) for the user " +
-    "describing the situation, and a single concrete data point (a number, date, or specific detail) " +
-    "that grounds the scenario.";
+    "describing the situation. The briefing must include at least one concrete, specific detail " +
+    "(a number, date, or incident) grounding it, not just a general description.";
 
   const schema = {
     type: "object",
     properties: {
       briefing: {
         type: "string",
-        description: "2-4 sentence briefing summarizing the situation for the user.",
-      },
-      data_point: {
-        type: "string",
-        description: "One concrete, specific detail (number, date, incident) grounding the scenario.",
+        description:
+          "2-4 sentence briefing summarizing the situation for the user, including at least one " +
+          "concrete, specific detail (a number, date, or incident) grounding it.",
       },
     },
-    required: ["briefing", "data_point"],
+    required: ["briefing"],
   };
 
   const result = await structuredCall({
@@ -87,7 +85,6 @@ export async function generateScenario(lesson) {
 
   return {
     briefing: result.briefing,
-    data_point: result.data_point,
     criteria: lesson.criteria,
   };
 }
@@ -115,7 +112,6 @@ export async function generateOpeningLine(lesson, scenario) {
 
   const userMessage =
     `Scenario briefing: ${scenario.briefing}\n` +
-    `Relevant detail: ${scenario.data_point}\n` +
     `Persona behavior notes: ${lesson.personaNotes}\n` +
     `Skills the user is being graded on this conversation: ${lesson.criteria.join(" | ")}\n\n` +
     "Generate a natural, neutral opening line for the NPC to start this conversation with the user. " +
@@ -177,8 +173,7 @@ export async function runTurn({ lesson, scenario, history, metCriteria, turnNumb
     WRITING_STYLE;
 
   const userMessage =
-    `Scenario briefing: ${scenario.briefing}\n` +
-    `Relevant detail: ${scenario.data_point}\n\n` +
+    `Scenario briefing: ${scenario.briefing}\n\n` +
     `All guide criteria: ${lesson.criteria.join(" | ")}\n` +
     `Already met: ${metCriteria.length ? metCriteria.join(" | ") : "(none yet)"}\n` +
     `Still unmet: ${unmetCriteria.length ? unmetCriteria.join(" | ") : "(none)"}\n\n` +

@@ -46,13 +46,16 @@ Output format (structured):
 ```json
 {
   "briefing": "string",
-  "data_point": "string",
   "criteria": ["string", "string", "string"]
 }
 ```
 
+Note: the briefing itself must include at least one concrete, specific detail (a number, date, or
+incident) grounding it — this was originally a separate `data_point` field, but that just restated
+something already in the briefing, so it was folded into the one field.
+
 ### Stage 2 — Present Scenario to User
-Display: briefing text, data point, and guide criteria (guide is hidden for checkpoint-type lessons — see "Checkpoints" below).
+Display: briefing text and guide criteria (guide is hidden for checkpoint-type lessons — see "Checkpoints" below).
 
 ### Stage 3 — Opening NPC Line
 Generate a natural opening line from the NPC, consistent with the persona behavior notes. This does not depend on user input yet.

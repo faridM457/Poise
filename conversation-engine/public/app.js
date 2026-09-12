@@ -85,7 +85,6 @@ async function selectLesson(lessonId) {
   el.scenarioContent.innerHTML = `
     <p><strong>${lesson.title}</strong> (${lesson.unit})</p>
     <p>${scenario.briefing}</p>
-    <p><em>${scenario.data_point}</em></p>
   `;
 
   if (lesson.isCheckpoint) {
