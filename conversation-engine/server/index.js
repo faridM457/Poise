@@ -100,7 +100,7 @@ app.post("/api/tts", async (req, res) => {
     }
 
     const audio = await generateSpeech(text, character);
-    res.set("Content-Type", "audio/wav");
+    res.set("Content-Type", "audio/mpeg");
     res.send(audio);
   } catch (err) {
     console.error(err);

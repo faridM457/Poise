@@ -1,14 +1,21 @@
-// Calls the self-hosted OmniVoice endpoint on Modal (see tts-modal/app.py).
-// Only 4 designed voices exist right now (see DESIGNED_VOICES in that file),
-// but the curriculum has many more character names, so any character name
-// is deterministically mapped onto one of the 4 -- same character always
-// gets the same voice within a run, without needing an exact name match.
-const VOICE_KEYS = ["marcus", "priya", "dana", "alex"];
+// NPC text-to-speech via Deepgram Aura-2 (managed API). Chosen over the
+// earlier self-hosted OmniVoice-on-Modal approach for dev/testing and near-
+// term production: no cold starts, simple flat per-character billing, no
+// infrastructure to run. See tts-modal/ for the parked self-hosting path,
+// worth revisiting only once real usage volume justifies it (see the
+// cost math in project notes: an always-warm self-hosted GPU only beats
+// Deepgram's metered rate at very high sustained volume).
+const VOICE_MODELS = {
+  marcus: "aura-2-draco-en", // masculine, warm, approachable, trustworthy, baritone
+  priya: "aura-2-athena-en", // feminine, calm, smooth, professional
+  dana: "aura-2-phoebe-en", // feminine, energetic, warm, casual
+  alex: "aura-2-apollo-en", // masculine, confident, comfortable, casual
+};
+const VOICE_KEYS = Object.keys(VOICE_MODELS);
 
 function mapCharacterToVoice(characterName) {
   const name = (characterName || "").toLowerCase();
-  const exact = VOICE_KEYS.find((key) => name === key);
-  if (exact) return exact;
+  if (VOICE_MODELS[name]) return name;
 
   let hash = 0;
   for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
@@ -16,21 +23,26 @@ function mapCharacterToVoice(characterName) {
 }
 
 export async function generateSpeech(text, characterName) {
-  const endpoint = process.env.TTS_ENDPOINT_URL;
-  if (!endpoint) {
-    throw new Error("TTS_ENDPOINT_URL is not set. Deploy tts-modal/app.py and add the URL to .env.");
+  const apiKey = process.env.DEEPGRAM_API_KEY;
+  if (!apiKey) {
+    throw new Error("DEEPGRAM_API_KEY is not set. Add it to .env (sign up at deepgram.com for a free-credit key).");
   }
 
   const voice = mapCharacterToVoice(characterName);
-  const res = await fetch(endpoint, {
+  const model = VOICE_MODELS[voice];
+
+  const res = await fetch(`https://api.deepgram.com/v1/speak?model=${model}&encoding=mp3`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, voice }),
+    headers: {
+      Authorization: `Token ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ text }),
   });
 
   if (!res.ok) {
     const detail = await res.text().catch(() => res.statusText);
-    throw new Error(`TTS endpoint failed (${res.status}): ${detail}`);
+    throw new Error(`Deepgram TTS failed (${res.status}): ${detail}`);
   }
 
   return Buffer.from(await res.arrayBuffer());
