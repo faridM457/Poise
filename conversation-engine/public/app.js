@@ -23,6 +23,7 @@ const el = {
   chatLog: document.getElementById("chat-log"),
   turnForm: document.getElementById("turn-form"),
   turnInput: document.getElementById("turn-input"),
+  micBtn: document.getElementById("mic-btn"),
   turnCounter: document.getElementById("turn-counter"),
   feedbackPanel: document.getElementById("feedback-panel"),
   feedbackContent: document.getElementById("feedback-content"),
@@ -174,6 +175,58 @@ el.turnForm.addEventListener("submit", async (e) => {
     el.turnInput.disabled = false;
   }
 });
+
+// Speech-to-text for the turn input, using the browser's built-in Web Speech
+// API. Purely additive: it only fills el.turnInput.value so the user can
+// review (and edit) the transcript before hitting the existing Send button —
+// it never auto-submits. This also makes it easy to check whether the
+// browser's recognizer keeps filler words ("um", "uh") in the transcript.
+const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition = null;
+let isListening = false;
+
+if (!SpeechRecognitionCtor) {
+  // Unsupported browser: hide the mic button instead of wiring up handlers.
+  if (el.micBtn) el.micBtn.classList.add("hidden");
+} else {
+  recognition = new SpeechRecognitionCtor();
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  recognition.lang = "en-US";
+
+  recognition.addEventListener("result", (e) => {
+    const transcript = e.results[0][0].transcript;
+    el.turnInput.value = transcript;
+    el.turnInput.focus();
+  });
+
+  recognition.addEventListener("error", (e) => {
+    console.error("Speech recognition error", e);
+    alert(`Speech recognition error: ${e.error || "unknown error"}`);
+  });
+
+  recognition.addEventListener("end", () => {
+    isListening = false;
+    el.micBtn.classList.remove("listening");
+    el.micBtn.textContent = "🎤";
+  });
+
+  el.micBtn.addEventListener("click", () => {
+    if (isListening) return; // prevent double-starts
+    try {
+      recognition.start();
+      isListening = true;
+      el.micBtn.classList.add("listening");
+      el.micBtn.textContent = "🔴";
+    } catch (err) {
+      console.error(err);
+      alert(`Couldn't start speech recognition: ${err.message}`);
+      isListening = false;
+      el.micBtn.classList.remove("listening");
+      el.micBtn.textContent = "🎤";
+    }
+  });
+}
 
 async function finalize(resolution) {
   el.feedbackContent.innerHTML = "<p><em>Generating feedback…</em></p>";
