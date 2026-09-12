@@ -1,2 +1,2 @@
-# manager-coach
+# Poise
 Duolingo-style communication training for managers.
