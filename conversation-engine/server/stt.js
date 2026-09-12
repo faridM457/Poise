@@ -2,7 +2,9 @@
 // (no vendor API, no network call). This exists to answer one question: does
 // whisper.cpp retain natural filler words ("um", "uh") that the browser's
 // native SpeechRecognition strips out? See public/stt-test.js for the
-// recording UI. Separate from server/tts.js's Deepgram-based NPC voice path.
+// recording UI. This is independent of NPC voice output (no TTS backend is
+// wired into this local test site; NPC speech synthesis is planned for the
+// native iOS app instead).
 //
 // whisper.cpp itself isn't vendored into this repo -- it's built from source
 // in a local scratchpad directory during development. Point

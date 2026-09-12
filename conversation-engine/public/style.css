@@ -116,27 +116,6 @@ section {
   margin-bottom: 2px;
 }
 
-.play-audio-btn {
-  float: right;
-  margin-left: 8px;
-  padding: 0 4px;
-  font-size: 0.85rem;
-  line-height: 1.4;
-  background: none;
-  border: none;
-  cursor: pointer;
-  opacity: 0.7;
-}
-
-.play-audio-btn:hover {
-  opacity: 1;
-}
-
-.play-audio-btn:disabled {
-  cursor: default;
-  opacity: 0.4;
-}
-
 .mic-btn {
   padding: 0 10px;
   font-size: 0.95rem;
