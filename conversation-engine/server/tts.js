@@ -5,8 +5,12 @@
 // worth revisiting only once real usage volume justifies it (see the
 // cost math in project notes: an always-warm self-hosted GPU only beats
 // Deepgram's metered rate at very high sustained volume).
+// All American English (en-us) -- verified against Deepgram's docs, which
+// only flag a handful of voices as non-American (draco and pandora are
+// en-gb, hyperion and theia are en-au, amalthea is en-ph); everything else,
+// including all 4 below, defaults to en-us.
 const VOICE_MODELS = {
-  marcus: "aura-2-draco-en", // masculine, warm, approachable, trustworthy, baritone
+  marcus: "aura-2-mars-en", // masculine, smooth, patient, trustworthy, baritone
   priya: "aura-2-athena-en", // feminine, calm, smooth, professional
   dana: "aura-2-phoebe-en", // feminine, energetic, warm, casual
   alex: "aura-2-apollo-en", // masculine, confident, comfortable, casual
