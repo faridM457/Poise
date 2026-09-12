@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { lessons, getLessonById } from "./lessons.js";
 import { generateScenario, generateOpeningLine, runTurn, generateFeedback } from "./engine.js";
+import { generateSpeech } from "./tts.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -85,6 +86,22 @@ app.post("/api/feedback", async (req, res) => {
     });
 
     res.json(feedback);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/tts", async (req, res) => {
+  try {
+    const { text, character } = req.body;
+    if (!text || !character) {
+      return res.status(400).json({ error: "Both 'text' and 'character' are required" });
+    }
+
+    const audio = await generateSpeech(text, character);
+    res.set("Content-Type", "audio/wav");
+    res.send(audio);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });

@@ -221,17 +221,51 @@ el.resetBtn.addEventListener("click", () => {
 
 function renderChatLog() {
   el.chatLog.innerHTML = "";
-  state.history.forEach((turn) => {
+  state.history.forEach((turn, index) => {
     const div = document.createElement("div");
     div.className = `chat-msg ${turn.role}`;
     if (turn.flag === "mild_flag") div.classList.add("flag-mild");
     if (turn.flag === "severe_flag") div.classList.add("flag-severe");
     const speaker = turn.role === "npc" ? turn.character || "NPC" : "You";
-    div.innerHTML = `<span class="speaker">${speaker}</span>${turn.text}`;
+    const audioBtn = turn.role === "npc" ? `<button class="play-audio-btn" data-turn-index="${index}" title="Play this line" type="button">🔊</button>` : "";
+    div.innerHTML = `<span class="speaker">${speaker}</span>${audioBtn}${turn.text}`;
     el.chatLog.appendChild(div);
   });
   el.chatLog.scrollTop = el.chatLog.scrollHeight;
 }
+
+// Delegated so it keeps working across renderChatLog() rebuilding the DOM.
+el.chatLog.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".play-audio-btn");
+  if (!btn) return;
+
+  const turn = state.history[Number(btn.dataset.turnIndex)];
+  if (!turn) return;
+
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "…";
+  try {
+    const res = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: turn.text, character: turn.character }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || "Request failed");
+    }
+    const blob = await res.blob();
+    const audio = new Audio(URL.createObjectURL(blob));
+    audio.play();
+  } catch (err) {
+    console.error(err);
+    alert(`Couldn't generate audio: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+});
 
 function updateCriteriaDisplay() {
   if (state.lesson.isCheckpoint) return;
