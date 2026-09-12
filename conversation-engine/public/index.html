@@ -43,8 +43,28 @@
       <div id="feedback-content"></div>
       <button id="reset-btn">Reset &amp; run again</button>
     </section>
+    <section id="stt-test-panel">
+      <h2>STT Test (whisper.cpp)</h2>
+      <p class="subtitle">Local, on-device transcription test — records real speech and checks whether filler words ("um", "uh") survive, unlike the browser's SpeechRecognition used above.</p>
+      <p class="subtitle">Filler-word dropping is a learned bias in Whisper's training data, not a suppression flag — these modes are decoding-strategy experiments, not a guaranteed fix.</p>
+      <label for="stt-mode-select">Mode:</label>
+      <select id="stt-mode-select"></select>
+      <button id="stt-record-btn" class="mic-btn" type="button">🎤 Record</button>
+      <p id="stt-test-status"></p>
+      <div class="stt-results">
+        <div>
+          <h3>tiny.en</h3>
+          <p id="stt-result-tiny" class="stt-transcript"></p>
+        </div>
+        <div>
+          <h3>base.en</h3>
+          <p id="stt-result-base" class="stt-transcript"></p>
+        </div>
+      </div>
+    </section>
   </main>
 
   <script src="app.js"></script>
+  <script type="module" src="stt-test.js"></script>
 </body>
 </html>

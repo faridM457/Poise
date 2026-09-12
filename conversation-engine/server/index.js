@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { lessons, getLessonById } from "./lessons.js";
 import { generateScenario, generateOpeningLine, runTurn, generateFeedback } from "./engine.js";
 import { generateSpeech } from "./tts.js";
+import { transcribeWithWhisper, STT_MODES } from "./stt.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -102,6 +103,27 @@ app.post("/api/tts", async (req, res) => {
     const audio = await generateSpeech(text, character);
     res.set("Content-Type", "audio/mpeg");
     res.send(audio);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/stt-test/modes", (req, res) => {
+  res.json(
+    Object.fromEntries(Object.entries(STT_MODES).map(([key, { label }]) => [key, label]))
+  );
+});
+
+app.post("/api/stt-test", express.raw({ type: "audio/wav", limit: "25mb" }), async (req, res) => {
+  try {
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+      return res.status(400).json({ error: "Request body must be a WAV audio clip (Content-Type: audio/wav)" });
+    }
+
+    const mode = typeof req.query.mode === "string" ? req.query.mode : "default";
+    const transcripts = await transcribeWithWhisper(req.body, mode);
+    res.json(transcripts);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
