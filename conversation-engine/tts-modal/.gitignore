@@ -1,0 +1,3 @@
+voices/*.wav
+output/
+__pycache__/
