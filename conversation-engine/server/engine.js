@@ -97,10 +97,12 @@ export async function generateOpeningLine(lesson, scenario) {
     "\"this is about the Morrison report\", that's the specific detail the user is supposed to bring " +
     "up, not you).\n" +
     "- Explain your reasoning, give your excuse, or offer your side of the story.\n" +
-    "It's fine, and good, to react to the fact that a conversation is coming (bracing for it, " +
-    "sounding guarded, a vague knowing comment like \"I figured this was coming\") per the persona " +
-    "notes, since a real person would show that much. Stay general. The user should be the one who " +
-    "introduces every specific, not you.\n\n" +
+    "- Presuppose you already know what this is about, or sound resigned, guilty, or like you're " +
+    "bracing for bad news. Open neutrally, the way you'd start any ordinary check-in, for example a " +
+    "plain greeting or a simple question like \"What did you want to talk about?\" Any wariness or " +
+    "defensiveness from the persona notes should only show up in how you respond after the user " +
+    "actually raises the topic, not in this first line. The user should be the one who introduces " +
+    "every specific, not you.\n\n" +
     WRITING_STYLE;
 
   const userMessage =
@@ -108,10 +110,10 @@ export async function generateOpeningLine(lesson, scenario) {
     `Relevant detail: ${scenario.data_point}\n` +
     `Persona behavior notes: ${lesson.personaNotes}\n` +
     `Skills the user is being graded on this conversation: ${lesson.criteria.join(" | ")}\n\n` +
-    "Generate a natural opening line for the NPC to start this conversation with the user. It " +
-    "should not depend on anything the user has said yet. Show the NPC reacting generally to a " +
-    "conversation coming, without naming the specific incident/detail above or explaining their own " +
-    "reasoning, those are what the graded skills above are meant to draw out of the user.";
+    "Generate a natural, neutral opening line for the NPC to start this conversation with the user. " +
+    "It should not depend on anything the user has said yet, should not presuppose the topic or " +
+    "sound guarded or resigned, and must not name the specific incident/detail above or explain " +
+    "their own reasoning, those are what the graded skills above are meant to draw out of the user.";
 
   const schema = {
     type: "object",
