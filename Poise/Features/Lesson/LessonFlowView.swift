@@ -26,6 +26,14 @@ struct LessonFlowView: View {
     private let evaluator = MockEvaluationService()
 
     var body: some View {
+        if let engineLessonId = lesson.engineLessonId {
+            LiveLessonFlowView(engineLessonId: engineLessonId, onFinish: onFinish)
+        } else {
+            legacyScriptedBody
+        }
+    }
+
+    private var legacyScriptedBody: some View {
         VStack(spacing: 0) {
             LessonProgressHeader(step: visibleStepIndex, total: visibleStepTotal, label: step.label, onExit: onFinish)
             Group {
@@ -374,15 +382,39 @@ private struct RoleplayView: View {
     }
 }
 
-private struct MessageBubble: View {
+// Not private: reused by LiveLessonFlowView.swift for the real-generation flow.
+struct MessageBubble: View {
     let message: ConversationMessage
+    // Word-by-word reveal, used for the most recent NPC line in a live
+    // (server-generated) conversation so it feels spoken rather than
+    // dumped on screen. Defaulted off so the scripted mock flow (which
+    // shows all its canned replies at once) is unaffected.
+    var animateReveal: Bool = false
+    // Real Pocket TTS clip duration for this line, when available -- see
+    // WordRevealText. Left nil for the scripted mock flow (unaffected).
+    var speechDuration: Double? = nil
+    var onRevealStart: (() -> Void)?
+    var onRevealComplete: (() -> Void)?
 
     var body: some View {
         HStack {
             if message.speaker == .user { Spacer(minLength: 34) }
-            Text(message.text)
-                .font(PoiseType.body(.bold))
-                .foregroundStyle(message.speaker == .user ? Color.white : Color.poiseNavy)
+            Group {
+                if animateReveal {
+                    WordRevealText(
+                        text: message.text,
+                        speechDuration: speechDuration,
+                        font: PoiseType.body(.bold),
+                        color: message.speaker == .user ? .white : .poiseNavy,
+                        onRevealStart: onRevealStart,
+                        onRevealComplete: onRevealComplete
+                    )
+                } else {
+                    Text(message.text)
+                        .font(PoiseType.body(.bold))
+                        .foregroundStyle(message.speaker == .user ? Color.white : Color.poiseNavy)
+                }
+            }
                 .padding(18)
                 .background(message.speaker == .user ? Color.poiseBlue : Color.white)
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -390,9 +422,9 @@ private struct MessageBubble: View {
                     RoundedRectangle(cornerRadius: 20, style: .continuous)
                         .stroke(message.speaker == .user ? Color.poiseBlueDark.opacity(0.2) : Color.poiseBorder, lineWidth: 1.5)
                 )
-            if message.speaker == .marcus { Spacer(minLength: 34) }
+            if message.speaker != .user { Spacer(minLength: 34) }
         }
-        .accessibilityLabel(message.speaker == .user ? "Your message" : "Marcus says")
+        .accessibilityLabel(message.speaker == .user ? "Your message" : "\(message.characterName ?? "Marcus") says")
     }
 }
 

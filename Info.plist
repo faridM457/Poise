@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Local-only ATS exception so the app can call the conversation-engine
+	     dev server over plain HTTP on localhost. Merged with Xcode's
+	     auto-generated Info.plist (GENERATE_INFOPLIST_FILE stays YES). Do not
+	     widen this to NSAllowsArbitraryLoads or a non-localhost domain. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>localhost</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
+	<!-- Narrow speech/mic exception: lets the user speak their turn instead of
+	     typing it, via Apple's on-device Speech framework (SFSpeechRecognizer).
+	     No audio is sent anywhere off-device for this. -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Poise uses your microphone so you can speak your response instead of typing it.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Poise transcribes your spoken response on-device so you can review it before sending.</string>
+</dict>
+</plist>

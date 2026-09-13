@@ -14,9 +14,11 @@ enum PoiseMockData {
         subtitle: "Build clarity, empathy, and courage",
         completion: "2 of 5 complete",
         lessons: [
-            LessonNode(title: "Addressing an issue early", subtitle: "Completed", state: .completed, icon: "checkmark", isCheckpoint: false, skipGuide: false, hintsEnabled: true),
+            // Live-wired to conversation-engine's real "feedback-small-pattern" lesson
+            // (see server/lessons.js) -- the only node that isn't scripted/mock content.
+            LessonNode(title: "Naming a Small Pattern", subtitle: "Continue", state: .available, icon: "text.bubble.fill", isCheckpoint: false, skipGuide: false, hintsEnabled: true, engineLessonId: "feedback-small-pattern"),
             LessonNode(title: "Giving critical feedback", subtitle: "Completed", state: .completed, icon: "checkmark", isCheckpoint: false, skipGuide: false, hintsEnabled: true),
-            LessonNode(title: "Mediating a conflict", subtitle: "Continue", state: .available, icon: "text.bubble.fill", isCheckpoint: false, skipGuide: false, hintsEnabled: true),
+            LessonNode(title: "Mediating a conflict", subtitle: "Locked", state: .locked, icon: "lock.fill", isCheckpoint: false, skipGuide: false, hintsEnabled: true),
             LessonNode(title: "Delivering an unpopular decision", subtitle: "Locked", state: .locked, icon: "lock.fill", isCheckpoint: false, skipGuide: false, hintsEnabled: true),
             LessonNode(title: "Checkpoint: calm under pressure", subtitle: "Locked", state: .checkpoint, icon: "flag.checkered", isCheckpoint: true, skipGuide: true, hintsEnabled: false)
         ]

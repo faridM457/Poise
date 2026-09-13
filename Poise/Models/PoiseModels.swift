@@ -23,6 +23,9 @@ struct LessonNode: Identifiable, Hashable {
     let isCheckpoint: Bool
     let skipGuide: Bool
     let hintsEnabled: Bool
+    // When set, this node is backed by a real lesson from the conversation-engine
+    // server (matches a lessons.js `id`) instead of the scripted mock flow.
+    var engineLessonId: String? = nil
 }
 
 struct LessonUnit: Identifiable {
@@ -47,12 +50,28 @@ struct ScriptedReply: Identifiable, Hashable {
 struct ConversationMessage: Identifiable, Hashable {
     enum Speaker: Hashable {
         case marcus
+        // Generic NPC speaker for real, server-generated lessons where the
+        // character isn't Marcus (see `characterName`). Kept separate from
+        // `.marcus` so the existing scripted mock flow is untouched.
+        case npc
         case user
     }
 
     let id = UUID()
     let speaker: Speaker
     let text: String
+    // Real character name for `.npc` messages (e.g. "Sam"), shown in the UI
+    // label. Unused for `.marcus`/`.user`.
+    var characterName: String? = nil
+}
+
+// A real character from the conversation-engine server (name/role only --
+// there's no per-character art yet, so the UI currently falls back to the
+// Marcus avatar as a placeholder regardless of the actual character).
+struct EngineCharacter: Codable, Hashable {
+    let name: String
+    let role: String
+    let relationship: String?
 }
 
 struct ScoreResult {
