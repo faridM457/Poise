@@ -1,53 +1,224 @@
 import SwiftUI
 
 struct PoiseLogo: View {
+    // Sized by its context: the Learn header sets this below the page's own
+    // title size so the wordmark doesn't outrank the greeting under it.
+    var size: CGFloat = 34
+
     var body: some View {
         HStack(spacing: 0) {
             Text("poise")
-                .font(.system(size: 34, weight: .heavy, design: .rounded))
+                .font(.system(size: size, weight: .heavy, design: .rounded))
                 .foregroundStyle(Color.poiseBlueDark)
             Text(".")
-                .font(.system(size: 34, weight: .heavy, design: .rounded))
+                .font(.system(size: size, weight: .heavy, design: .rounded))
                 .foregroundStyle(Color.poiseGold)
         }
         .accessibilityLabel("Poise")
     }
 }
 
-struct StatusRow: View {
+// MARK: - Shared page chrome
+//
+// Learn, Progress and Profile are all built from the pieces below so the three
+// tabs read as one app: the same header, the same section headers, the same
+// icon container, the same card press feel. Anything defined privately inside
+// a single feature view is, by definition, not part of this system -- if a
+// second screen needs it, it moves here.
+
+// Flat, full-bleed, closed with a hairline -- the mirror image of the tab bar
+// at the other end of the screen. Attach with `.safeAreaInset(edge: .top)` so
+// page content scrolls underneath it.
+struct PoiseTopBar: View {
     let streak: Int
-    let xp: Int
-    let level: Int
+    let energyText: String
 
     var body: some View {
-        HStack {
-            StatusPill(icon: "flame.fill", value: "\(streak) days", color: .poiseOrange)
-            Spacer()
-            StatusPill(icon: "sparkles", value: "\(xp) XP", color: .poiseGold)
-            Spacer()
-            StatusPill(icon: "flag.fill", value: "Level \(level)", color: .poiseBlueDark)
+        HStack(alignment: .center, spacing: 12) {
+            // Deliberately smaller than PoiseType.title -- the wordmark is
+            // orientation, the page's own heading under it is the real title.
+            PoiseLogo(size: 24)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .minimumScaleFactor(0.8)
+
+            HStack(spacing: 8) {
+                PoiseStatusChip(icon: "flame.fill", value: "\(streak)", color: .poiseOrange)
+                PoiseStatusChip(icon: "bolt.fill", value: energyText, color: .poiseAmber)
+            }
+            .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.horizontal, 20)
-        .padding(.vertical, 14)
-        .background(.white.opacity(0.94))
+        .padding(.top, 6)
+        .padding(.bottom, 12)
+        .background(Color.poiseCanvas)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.poiseBorder.opacity(0.8))
+                .frame(height: 1)
+        }
+        .accessibilityElement(children: .contain)
     }
 }
 
-struct StatusPill: View {
+// Icon + value in a white capsule with a hairline. The accent colors only the
+// glyph -- the chip itself stays neutral so two chips side by side don't read
+// as two different components.
+struct PoiseStatusChip: View {
     let icon: String
     let value: String
     let color: Color
 
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 5) {
             Image(systemName: icon)
-                .font(.system(size: 19, weight: .bold))
-                .symbolRenderingMode(.hierarchical)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(color)
             Text(value)
-                .font(PoiseType.caption(.heavy))
+                .font(PoiseType.subhead(.bold))
+                .foregroundStyle(Color.poiseNavy)
+                .lineLimit(1)
         }
-        .foregroundStyle(color)
+        .fixedSize(horizontal: true, vertical: false)
+        .padding(.horizontal, 11)
+        .padding(.vertical, 7)
+        .background(Color.white)
+        .clipShape(Capsule())
+        .overlay(Capsule().stroke(Color.poiseBorder, lineWidth: 1))
         .accessibilityElement(children: .combine)
+    }
+}
+
+// One eyebrow style app-wide: uppercase, tracked, muted. Used for section
+// headers and for small labels inside cards ("UNIT 1", "UP NEXT").
+struct PoiseEyebrow: View {
+    let text: String
+    var color: Color = .poiseMuted
+
+    var body: some View {
+        Text(text.uppercased())
+            .font(PoiseType.eyebrow())
+            .tracking(PoiseType.eyebrowTracking)
+            .foregroundStyle(color)
+    }
+}
+
+// Every section is introduced the same way: one eyebrow, 10pt of air, content.
+// No section gets a louder header than any other.
+struct PoiseSection<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            PoiseEyebrow(text: title)
+            content
+        }
+    }
+}
+
+// The page's own heading, one step below the largeTitle that used to be used
+// here -- Learn's greeting sets the size for all three tabs.
+struct PoisePageHeader: View {
+    let title: String
+    var subtitle: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(PoiseType.title())
+                .foregroundStyle(Color.poiseNavy)
+            if let subtitle {
+                Text(subtitle)
+                    .font(PoiseType.subhead())
+                    .foregroundStyle(Color.poiseMuted)
+            }
+        }
+    }
+}
+
+// All icons in the app's chrome live in the same container: a rounded square
+// whose radius is 0.3x its size, glyph at 0.44x, which leaves uniform padding
+// on all four sides at any size.
+struct PoiseIconBadge: View {
+    let icon: String
+    let color: Color
+    var size: CGFloat = 38
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 0.3, style: .continuous)
+                .fill(color.opacity(0.13))
+            Image(systemName: icon)
+                .font(.system(size: size * 0.44, weight: .semibold))
+                .foregroundStyle(color)
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+// The hairline used between rows inside a card -- the same weight and color as
+// the header and tab bar edges, rather than the system separator.
+struct PoiseDivider: View {
+    var body: some View {
+        Rectangle()
+            .fill(Color.poiseBorder.opacity(0.8))
+            .frame(height: 1)
+    }
+}
+
+// Tappable cards acknowledge the press with a quiet scale rather than a
+// highlight -- TactileButtonStyle's raised edge is reserved for real buttons
+// in the lesson flow.
+struct PoisePressableStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.975 : 1)
+            .animation(.spring(response: 0.24, dampingFraction: 0.8), value: configuration.isPressed)
+    }
+}
+
+// The flat primary action used by the redesigned tabs: a solid capsule, no
+// raised lower edge. TactileButtonStyle stays in the lesson flow, where the
+// chunkier feel belongs.
+struct PoiseFlatButtonStyle: ButtonStyle {
+    var fill: Color = .poiseBlueDark
+    var foreground: Color = .white
+    // Inline (hugging) by default, matching the Learn hero's CTA. Pass true
+    // only where the button really is the whole surface's single action.
+    var fullWidth: Bool = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(PoiseType.body(.bold))
+            .foregroundStyle(foreground)
+            .padding(.horizontal, 22)
+            .frame(maxWidth: fullWidth ? .infinity : nil)
+            .frame(height: 48)
+            .background(fill)
+            .clipShape(Capsule())
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .animation(.spring(response: 0.24, dampingFraction: 0.8), value: configuration.isPressed)
+    }
+}
+
+// A white card with a hairline and one soft shadow -- the single surface
+// treatment shared by every non-hero card in the app.
+struct PoiseSurfaceCard<Content: View>: View {
+    var padding: CGFloat = 18
+    var radius: CGFloat = 20
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        content
+            .padding(padding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .stroke(Color.poiseBorder, lineWidth: 1)
+            )
+            .shadow(color: .poiseNavy.opacity(0.05), radius: 8, x: 0, y: 4)
     }
 }
 

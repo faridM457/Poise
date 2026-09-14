@@ -19,20 +19,25 @@ struct LiveLessonFlowView: View {
     }
 
     let engineLessonId: String
-    let onFinish: () -> Void
+    let title: String
+    // Bool is whether the lesson was actually completed (reached the
+    // scorecard and tapped Continue) vs. exited early via the header's close
+    // button.
+    let onFinish: (Bool) -> Void
 
     @StateObject private var viewModel: LiveLessonViewModel
     @State private var step: Step = .briefing
 
-    init(engineLessonId: String, onFinish: @escaping () -> Void) {
+    init(engineLessonId: String, title: String, onFinish: @escaping (Bool) -> Void) {
         self.engineLessonId = engineLessonId
+        self.title = title
         self.onFinish = onFinish
         _viewModel = StateObject(wrappedValue: LiveLessonViewModel(lessonId: engineLessonId))
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            LessonProgressHeader(step: stepIndex, total: 4, label: stepLabel, onExit: onFinish)
+            LessonProgressHeader(step: stepIndex, total: 4, label: stepLabel, onExit: { onFinish(false) })
             Group {
                 if viewModel.isLoadingScenario {
                     LiveLoadingView(text: "Generating your scenario...")
@@ -43,13 +48,13 @@ struct LiveLessonFlowView: View {
                 } else {
                     switch step {
                     case .briefing:
-                        LiveBriefingView(viewModel: viewModel) { step = .guide }
+                        LiveBriefingView(viewModel: viewModel, title: title) { step = .guide }
                     case .guide:
                         LiveGuideView(criteria: viewModel.criteria) { step = .roleplay }
                     case .roleplay:
                         LiveRoleplayView(viewModel: viewModel) { step = .scorecard }
                     case .scorecard:
-                        LiveScorecardView(viewModel: viewModel, onContinue: onFinish)
+                        LiveScorecardView(viewModel: viewModel, onContinue: { onFinish(true) })
                     }
                 }
             }
@@ -120,6 +125,7 @@ private struct LiveErrorView: View {
 
 private struct LiveBriefingView: View {
     @ObservedObject var viewModel: LiveLessonViewModel
+    let title: String
     let onContinue: () -> Void
 
     var body: some View {
@@ -127,7 +133,7 @@ private struct LiveBriefingView: View {
             VStack(alignment: .leading, spacing: 22) {
                 VStack(alignment: .leading, spacing: 10) {
                     SectionEyebrow(text: "Live scenario")
-                    Text("Naming a Small Pattern")
+                    Text(title)
                         .font(PoiseType.largeTitle())
                         .foregroundStyle(Color.poiseNavy)
                 }
@@ -289,7 +295,7 @@ private struct LiveRoleplayView: View {
 
                 VStack {
                     HStack {
-                        Text("\(viewModel.character?.name ?? "NPC") · Turn \(viewModel.turnNumber) / 5")
+                        Text("\(viewModel.character?.name ?? "NPC") · Turn \(viewModel.turnNumber)")
                             .font(PoiseType.caption(.heavy))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 13)

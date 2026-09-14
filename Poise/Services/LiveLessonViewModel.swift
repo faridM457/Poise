@@ -222,26 +222,27 @@ final class LiveLessonViewModel: ObservableObject {
 
     // MARK: - Mock content (UI testing only, see useMockDataForUITesting)
 
+    // Looked up by lessonId so every one of the 20 lessons gets its own
+    // mocked content instead of all sharing this one Sam/Meridian scenario --
+    // falls back to it only if `lessonId` doesn't match any known lesson,
+    // which shouldn't normally happen.
+    private var mockContent: MockLessonContent {
+        PoiseLessonLibrary.content(for: lessonId) ?? PoiseLessonLibrary.all[0]
+    }
+
     private func loadMockScenario() {
-        let mockScenario = EngineScenario(
-            briefing: "Sam has quietly missed two handoff details on the Meridian project this month -- nothing dramatic, but you're the one catching it each time. You've asked Sam to grab a few minutes.",
-            criteria: [
-                "Name a specific, observable pattern rather than a vague complaint",
-                "Invite Sam's perspective before proposing a fix",
-                "Agree on one concrete next step together",
-            ]
-        )
+        let content = mockContent
+        let mockScenario = EngineScenario(briefing: content.briefing, criteria: content.criteria)
         scenario = mockScenario
         briefing = mockScenario.briefing
         criteria = mockScenario.criteria
-        character = EngineCharacter(name: "Sam", role: "Direct report", relationship: "6 months on the team, reports to the user")
+        character = content.character
 
         // Same deferred-presentation rule as the live path: text is ready
         // now, but presentOpeningLineIfNeeded() (called from the roleplay
         // screen) is what actually synthesizes/plays/reveals it.
-        let opening = "Hey, thanks for grabbing time -- everything okay? You mentioned wanting to talk about Meridian?"
-        pendingOpeningLine = ConversationMessage(speaker: .npc, text: opening, characterName: "Sam")
-        history = [HistoryTurn(role: "npc", text: opening, character: "Sam")]
+        pendingOpeningLine = ConversationMessage(speaker: .npc, text: content.openingLine, characterName: content.character.name)
+        history = [HistoryTurn(role: "npc", text: content.openingLine, character: content.character.name)]
     }
 
     private func mockSendUserResponse() async {
@@ -249,14 +250,10 @@ final class LiveLessonViewModel: ObservableObject {
         // visible while testing, instead of resolving instantly.
         try? await Task.sleep(nanoseconds: 500_000_000)
 
-        let mockReplies = [
-            "Oh -- I didn't realize that landed on you both times. I think I assumed someone else was tracking the client follow-ups.",
-            "That's fair. I can set myself a reminder the day before each handoff so it stops slipping through.",
-            "Okay, let's do that -- I'll send you a quick confirmation each time going forward.",
-        ]
+        let mockReplies = mockContent.turnReplies
         let reply = mockReplies[min(turnNumber - 1, mockReplies.count - 1)]
 
-        await presentNPCMessage(ConversationMessage(speaker: .npc, text: reply, characterName: character?.name ?? "Sam"))
+        await presentNPCMessage(ConversationMessage(speaker: .npc, text: reply, characterName: character?.name ?? mockContent.character.name))
         history.append(HistoryTurn(role: "npc", text: reply, character: character?.name))
 
         if turnNumber - 1 < criteria.count {
@@ -264,7 +261,7 @@ final class LiveLessonViewModel: ObservableObject {
             if !metCriteria.contains(newlyMet) { metCriteria.append(newlyMet) }
         }
 
-        if turnNumber >= 3 {
+        if turnNumber >= mockReplies.count {
             ended = true
             resolution = "approving"
             loadMockFeedback()
@@ -277,7 +274,7 @@ final class LiveLessonViewModel: ObservableObject {
             deductionCount: deductionCount,
             empathySummary: EmpathySummary(strong: 2, adequate: 1, minimal: 0),
             resolution: resolution,
-            feedbackLine: "You named the pattern clearly and gave Sam room to respond before proposing next steps -- a steady, well-paced conversation."
+            feedbackLine: mockContent.feedbackLine
         )
     }
 

@@ -18,7 +18,10 @@ struct LessonFlowView: View {
     }
 
     let lesson: LessonNode
-    let onFinish: () -> Void
+    // Bool is whether the lesson was actually completed (finished the
+    // scorecard) vs. exited early via the header's close button -- only a
+    // real completion should unlock the next lesson / spend energy.
+    let onFinish: (Bool) -> Void
 
     @State private var step: Step = .briefing
     @State private var messages: [ConversationMessage] = [PoiseMockData.openingMessage]
@@ -27,7 +30,7 @@ struct LessonFlowView: View {
 
     var body: some View {
         if let engineLessonId = lesson.engineLessonId {
-            LiveLessonFlowView(engineLessonId: engineLessonId, onFinish: onFinish)
+            LiveLessonFlowView(engineLessonId: engineLessonId, title: lesson.title, onFinish: onFinish)
         } else {
             legacyScriptedBody
         }
@@ -35,7 +38,7 @@ struct LessonFlowView: View {
 
     private var legacyScriptedBody: some View {
         VStack(spacing: 0) {
-            LessonProgressHeader(step: visibleStepIndex, total: visibleStepTotal, label: step.label, onExit: onFinish)
+            LessonProgressHeader(step: visibleStepIndex, total: visibleStepTotal, label: step.label, onExit: { onFinish(false) })
             Group {
                 switch step {
                 case .briefing:
@@ -51,7 +54,7 @@ struct LessonFlowView: View {
                         step = .scorecard
                     }
                 case .scorecard:
-                    ScorecardView(score: evaluator.evaluate(messages: messages), onContinue: onFinish)
+                    ScorecardView(score: evaluator.evaluate(messages: messages), onContinue: { onFinish(true) })
                 }
             }
         }

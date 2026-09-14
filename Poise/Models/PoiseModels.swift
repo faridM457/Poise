@@ -11,13 +11,14 @@ enum LessonNodeState: Hashable {
     case completed
     case available
     case locked
-    case checkpoint
 }
 
 struct LessonNode: Identifiable, Hashable {
-    let id = UUID()
+    // Stable across app launches -- matches a lessons.js lesson id, used as
+    // the key for both mock-content lookup and lock/unlock progress tracking
+    // (see LearnProgressStore), unlike the random UUID this used to be.
+    let id: String
     let title: String
-    let subtitle: String
     let state: LessonNodeState
     let icon: String
     let isCheckpoint: Bool
@@ -26,14 +27,26 @@ struct LessonNode: Identifiable, Hashable {
     // When set, this node is backed by a real lesson from the conversation-engine
     // server (matches a lessons.js `id`) instead of the scripted mock flow.
     var engineLessonId: String? = nil
+    // Shorter phrasing for the path node's label so every node renders its
+    // title at the same fixed font size -- `title` (used for accessibility)
+    // stays the full, descriptive version.
+    var shortTitle: String? = nil
+    var displayTitle: String { shortTitle ?? title }
+    // Known statically (not just once a live session starts) so the Learn
+    // page can show who the next lesson is with, e.g. in a thumbnail/caption,
+    // before the user has tapped into it.
+    var character: EngineCharacter? = nil
+    // Rough read on how long this takes, derived in MockLessonContent. Shown
+    // before the user commits -- the Learn hero's CTA otherwise asks for an
+    // unknown amount of time.
+    var estimatedMinutes: Int = 5
 }
 
 struct LessonUnit: Identifiable {
-    let id = UUID()
+    let id: String
     let label: String
     let title: String
     let subtitle: String
-    let completion: String
     let lessons: [LessonNode]
 }
 
@@ -104,6 +117,24 @@ struct ProgressSnapshot {
     let calendarDays: [PracticeDay]
     let skillRates: [SkillRate]
     let badges: [String]
+}
+
+extension ProgressSnapshot {
+    // The seven days ending today. calendarDays is a 28-day window, so slice
+    // back from today rather than assuming the last seven entries are it.
+    var weekEndingToday: [PracticeDay] {
+        guard !calendarDays.isEmpty else { return [] }
+        let end = (calendarDays.lastIndex { $0.isToday } ?? calendarDays.count - 1) + 1
+        return Array(calendarDays[max(0, end - 7)..<end])
+    }
+
+    // Counted from the same days the weekly card draws, so a summary of this
+    // number can never contradict the marks underneath it. Deliberately not
+    // `weeklyCompleted`, which is a separate hardcoded mock value that
+    // disagrees with the calendar.
+    var practicedThisWeek: Int { weekEndingToday.filter(\.practiced).count }
+
+    var remainingThisWeek: Int { max(0, weeklyGoal - practicedThisWeek) }
 }
 
 struct PracticeDay: Identifiable {

@@ -1,41 +1,148 @@
 import SwiftUI
+import UIKit
 
+// MARK: - Page
+//
+// Learn/Home is built on three deliberate rules so the page reads as one
+// designed surface instead of a stack of unrelated widgets:
+//
+//  1. ONE type ladder -- everything here uses PoiseType (eyebrow / caption /
+//     subhead / body / headline / title). No ad-hoc `.system(size:)` calls.
+//  2. ONE surface treatment -- every card is white with a hairline border and
+//     the same soft shadow (`poiseCard`). The single exception is the hero,
+//     which is the page's only tinted block.
+//  3. Color carries MEANING, not decoration -- per-unit accents appear only
+//     in a small icon badge and that unit's progress fill. Card backgrounds
+//     stay neutral so four units don't read as four different components.
+//
+// Nothing on this page is ever locked (see LearnProgressStore.state(for:)):
+// units are a menu, not a ladder, so every state here is either "not started
+// yet", "in progress" or "complete".
 struct LearnView: View {
-    let unit: LessonUnit
+    @ObservedObject private var store = LearnProgressStore.shared
     @State private var activeLesson: LessonNode?
+    // The unit whose lesson list is open. Presented as a sheet rather than a
+    // pushed screen: a NavigationStack here would swallow the tab bar's bottom
+    // safeAreaInset (see PoiseRootView), and this is a pick-one-and-go detour,
+    // not a place to live.
+    @State private var detailUnit: LessonUnit?
+    // A lesson chosen inside that sheet. It can't be started until the sheet
+    // has actually gone away -- setting a fullScreenCover while a sheet is
+    // dismissing drops the presentation -- so it waits for onDismiss.
+    @State private var pendingLesson: LessonNode?
+    // Set when the user taps the continue button at 0 energy -- surfaces a
+    // dismissable warning (testing purposes only, never a hard gate; see
+    // LearnProgressStore.markCompleted) rather than blocking the tap.
+    @State private var lowEnergyLesson: LessonNode?
+
+    private var units: [LessonUnit] { store.units }
 
     var body: some View {
-        ZStack {
-            LearnBackground()
-
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 18) {
-                    LearnTopStatusBar(streak: 7, xp: 420, level: PoiseMockData.progress.level)
-                        .padding(.top, 10)
-
-                    LearnUnitBanner(unit: unit)
-
-                    LessonPathView(unit: unit) { lesson in
-                        guard lesson.state == .available else { return }
-                        activeLesson = lesson
-                    }
-                    .padding(.top, 32)
-                    // PoiseRootView's .safeAreaInset(edge: .bottom) already
-                    // reserves space for the floating tab bar -- this only
-                    // needs a small amount of its own breathing room below
-                    // the last node, not a second large reservation on top
-                    // of that (190pt here previously left a huge blank gap
-                    // of empty background above the tab bar).
-                    .padding(.bottom, 32)
-                }
+        ScrollView(showsIndicators: false) {
+            pageContent
                 .padding(.horizontal, 20)
-            }
+                .padding(.top, 10)
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            PoiseTopBar(streak: store.streak, energyText: store.energyDisplayText)
+        }
+        // Painted as a background rather than a ZStack sibling: a sibling with
+        // .ignoresSafeArea() expands the ZStack's bounds, and the ScrollView
+        // next to it then loses the root's bottom tab-bar inset entirely.
+        .background(Color.poiseCanvas.ignoresSafeArea())
+        .sheet(item: $detailUnit, onDismiss: startPendingLesson) { unit in
+            UnitDetailSheet(
+                unit: unit,
+                accent: accentColor(for: units.firstIndex { $0.id == unit.id } ?? 0),
+                upNextLessonID: store.upNext?.lesson.id,
+                onSelect: { lesson in
+                    pendingLesson = lesson
+                    detailUnit = nil
+                }
+            )
         }
         .poiseLessonCover(item: $activeLesson) { lesson in
-            LessonFlowView(lesson: lesson) {
+            LessonFlowView(lesson: lesson) { completed in
                 activeLesson = nil
+                if completed { store.markCompleted(lesson.id) }
             }
         }
+        .alert(
+            "You're out of energy",
+            isPresented: Binding(
+                get: { lowEnergyLesson != nil },
+                set: { if !$0 { lowEnergyLesson = nil } }
+            ),
+            presenting: lowEnergyLesson
+        ) { lesson in
+            Button("Start anyway") {
+                activeLesson = lesson
+                lowEnergyLesson = nil
+            }
+            Button("Cancel", role: .cancel) {
+                lowEnergyLesson = nil
+            }
+        } message: { _ in
+            Text("You don't have any energy left, but you can still practice this lesson.")
+        }
+    }
+
+    // Split out of `body` -- inline, the whole page was one expression and
+    // the Swift type checker gave up on it ("failed to produce diagnostic").
+    private var pageContent: some View {
+        VStack(alignment: .leading, spacing: 26) {
+            GreetingHeader(name: PoiseMockData.profile.name, snapshot: PoiseMockData.progress)
+
+            UpNextCard(upNext: store.upNext, onStart: attemptStart)
+
+            PoiseSection(title: "Explore units") { unitGrid }
+
+            PoiseSection(title: "This week") {
+                WeeklyActivityCard(snapshot: PoiseMockData.progress)
+            }
+
+            // Small tail of breathing room. The tab bar is a bottom
+            // safeAreaInset (see PoiseRootView), so the scroll view already
+            // accounts for its height -- this is just air under the last card.
+            Color.clear.frame(height: 16)
+        }
+    }
+
+    private var unitGrid: some View {
+        LazyVGrid(
+            columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
+            spacing: 12
+        ) {
+            ForEach(Array(units.enumerated()), id: \.element.id) { index, unit in
+                UnitGridCard(
+                    unit: unit,
+                    accent: accentColor(for: index),
+                    action: { detailUnit = unit }
+                )
+            }
+        }
+    }
+
+    private func startPendingLesson() {
+        guard let lesson = pendingLesson else { return }
+        pendingLesson = nil
+        attemptStart(lesson)
+    }
+
+    // No state check: every lesson is startable, including replaying one
+    // that's already completed (markCompleted is idempotent, so a replay
+    // neither double-counts progress nor spends energy twice).
+    private func attemptStart(_ lesson: LessonNode) {
+        if store.energyRemaining <= 0 {
+            lowEnergyLesson = lesson
+        } else {
+            activeLesson = lesson
+        }
+    }
+
+    private func accentColor(for index: Int) -> Color {
+        let palette: [Color] = [.poiseMintDark, .poisePurple, .poiseOrange, .poiseBlueDark]
+        return palette[index % palette.count]
     }
 }
 
@@ -53,562 +160,633 @@ private extension View {
     }
 }
 
-private struct LearnBackground: View {
-    var body: some View {
-        LinearGradient(
-            colors: [Color.white, Color(red: 0.99, green: 0.98, blue: 0.95)],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .ignoresSafeArea()
-    }
-}
+// MARK: - Header
 
-private struct LearnTopStatusBar: View {
-    let streak: Int
-    let xp: Int
-    let level: Int
+// "Good afternoon, Farid" -- no emoji (the user was explicit: never use
+// literal emoji characters in this app; SF Symbols elsewhere are fine,
+// this is specifically about the greeting text).
+private struct GreetingHeader: View {
+    let name: String
+    let snapshot: ProgressSnapshot
 
-    var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            PoiseLogo()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .minimumScaleFactor(0.8)
-
-            HStack(spacing: 10) {
-                LearnStatusMetric(icon: "flame.fill", value: "\(streak)", color: .poiseOrange)
-                LearnStatusMetric(icon: "bolt.fill", value: "\(xp) XP", color: Color(red: 1.0, green: 0.80, blue: 0.02))
-                LearnStatusMetric(icon: "shield.fill", value: "\(level)", color: .poiseBlue)
-            }
-            .fixedSize(horizontal: true, vertical: false)
+    private var timeOfDayGreeting: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        switch hour {
+        case 0..<12: return "Good morning"
+        case 12..<17: return "Good afternoon"
+        default: return "Good evening"
         }
-        .padding(.horizontal, 2)
-        .accessibilityElement(children: .contain)
     }
-}
 
-private struct LearnStatusMetric: View {
-    let icon: String
-    let value: String
-    let color: Color
+    private var weeklyNudge: String {
+        let left = snapshot.remainingThisWeek
+        guard left > 0 else { return "You've hit this week's goal." }
+        return "\(left) more conversation\(left == 1 ? "" : "s") to hit this week's goal."
+    }
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.system(size: 25, weight: .heavy))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(color)
-            Text(value)
-                .font(.system(size: 16, weight: .heavy, design: .rounded))
+        VStack(alignment: .leading, spacing: 4) {
+            Text("\(timeOfDayGreeting), \(name)")
+                .font(PoiseType.title())
                 .foregroundStyle(Color.poiseNavy)
-                .lineLimit(1)
+            // Was "One conversation at a time." -- the only line on the page
+            // that told the user nothing. Deliberately says what's LEFT rather
+            // than what's done: the weekly card at the foot of the page
+            // already reports the count and the day-by-day shape, so a second
+            // "4 of 5" here would restate it. Both read from the same
+            // ProgressSnapshot week, so they can't disagree.
+            Text(weeklyNudge)
+                .font(PoiseType.subhead())
+                .foregroundStyle(Color.poiseMuted)
         }
-        .fixedSize(horizontal: true, vertical: false)
-        .accessibilityElement(children: .combine)
     }
 }
 
-private struct LearnUnitBanner: View {
-    let unit: LessonUnit
+// MARK: - Hero
+
+// "Up next" is a single, definite lesson -- the one LearnProgressStore.upNext
+// resolves from where the user actually left off (next unfinished lesson in
+// the unit they last worked in; the following unit's first lesson once that
+// unit is done). It is NOT tied to the grid below: tapping a unit card opens
+// that unit's lesson list, it doesn't retarget this card.
+//
+// Layout follows NewHomePage.png -- pale tinted card, eyebrow pill, headline,
+// one detail line, an inline pill CTA, and the character bleeding to the
+// trailing edge -- at a fixed compact height so the unit grid stays visible
+// without scrolling.
+private struct UpNextCard: View {
+    let upNext: (unit: LessonUnit, lesson: LessonNode, lessonNumber: Int)?
+    let onStart: (LessonNode) -> Void
+
+    private static let photoWidth: CGFloat = 126
+    // A floor, not a fixed height. At 184 fixed, a one-line headline left a
+    // 32.7pt void between the detail line and the button -- the same reserved
+    // whitespace removed from the unit cards, and the largest unstructured
+    // gap on the page. The card now sizes to its content and only stops
+    // shrinking here, so two-line headlines still grow to fit.
+    private static let minCardHeight: CGFloat = 176
+
+    private var headlineText: String {
+        upNext?.lesson.displayTitle ?? "You're all caught up"
+    }
+
+    private var detailText: String {
+        guard let upNext else { return "Open any unit below to practice a conversation again." }
+        return "\(UnitLabelFormatter.unitName(upNext.unit)) · Lesson \(upNext.lessonNumber) of \(upNext.unit.lessons.count)"
+    }
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [Color(red: 0.08, green: 0.20, blue: 0.43), Color.poiseBlueDark],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+        HStack(spacing: 0) {
+            // The flexible half of an HStack that also holds a fixed-width
+            // sibling must claim its width explicitly, or it sizes to its own
+            // unwrapped ideal width and runs under the image instead of
+            // wrapping. Keep this `maxWidth: .infinity`.
+            textColumn
+                .padding(18)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(unit.label.uppercased())
-                    .font(.system(size: 11, weight: .heavy, design: .rounded))
-                    .tracking(1.2)
-                    .foregroundStyle(Color.white.opacity(0.70))
-                    .lineLimit(1)
-                Text(unit.title)
-                    .font(.system(size: 20, weight: .heavy, design: .rounded))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
+            HeroCharacterPanel()
+                .frame(width: Self.photoWidth)
+        }
+        .frame(minHeight: Self.minCardHeight)
+        .background(heroBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.poiseBlue.opacity(0.14), lineWidth: 1)
+        )
+        .shadow(color: .poiseNavy.opacity(0.07), radius: 12, x: 0, y: 6)
+    }
 
-                HStack(alignment: .center) {
-                    Text(unit.subtitle)
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color.white.opacity(0.76))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                    Spacer(minLength: 8)
-                    UnitProgressBadge()
+    private var textColumn: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // The estimate rides beside the pill, not inside the detail line
+            // below: that line already measures ~134pt of a ~200pt column, and
+            // appending the time would push it back into wrapping.
+            HStack(spacing: 9) {
+                PoiseEyebrow(text: upNext == nil ? "All done" : "Up next", color: .poiseBlueDark)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color.white.opacity(0.75))
+                    .clipShape(Capsule())
+
+                if let upNext {
+                    DurationLabel(minutes: upNext.lesson.estimatedMinutes)
                 }
-                .padding(.top, 2)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 18)
-        }
-        .frame(maxWidth: .infinity)
-        .shadow(color: Color.poiseBlueDark.opacity(0.26), radius: 10, x: 0, y: 6)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(unit.label), \(unit.title), \(unit.subtitle), 2 of 5 complete")
-    }
-}
 
-private struct UnitProgressBadge: View {
-    var body: some View {
-        HStack(spacing: 5) {
-            HStack(spacing: 2) {
-                Capsule().fill(Color.poiseBlue).frame(width: 9, height: 4)
-                Capsule().fill(Color.poiseBlue.opacity(0.90)).frame(width: 9, height: 4)
-                Capsule().fill(Color.white.opacity(0.22)).frame(width: 20, height: 4)
+            Spacer().frame(height: 10)
+
+            Text(headlineText)
+                .font(PoiseType.headline())
+                .foregroundStyle(Color.poiseNavy)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer().frame(height: 4)
+
+            Text(detailText)
+                .font(PoiseType.subhead())
+                .foregroundStyle(Color.poiseMuted)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 12)
+
+            if let upNext {
+                Button(action: { onStart(upNext.lesson) }) {
+                    HStack(spacing: 7) {
+                        Text("Start")
+                            .font(PoiseType.body(.bold))
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 13, weight: .bold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 12)
+                    .background(Color.poiseBlueDark)
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(PoisePressableStyle())
+                .accessibilityLabel("Start \(upNext.lesson.title)")
             }
-            Text("2 / 5")
-                .font(.system(size: 10, weight: .heavy, design: .rounded))
-                .foregroundStyle(.white)
         }
-        .fixedSize()
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(Color.poiseNavy.opacity(0.42))
-        .clipShape(Capsule())
-        .overlay(Capsule().stroke(Color.white.opacity(0.10), lineWidth: 1))
     }
-}
 
-private enum LessonSide {
-    case left
-    case right
-}
-
-private struct LessonPathView: View {
-    let unit: LessonUnit
-    let onTap: (LessonNode) -> Void
-
-    private let sides: [LessonSide] = [.left, .right, .left, .right, .left]
-    // Shrunk substantially (from an earlier [280, 156, 292, 154, 190]) so
-    // all 5 nodes for a unit fit on one screen without scrolling, matching
-    // the mockup's density. Whichever row is current still gets slightly
-    // more headroom for MarcusCompanion via companionMinHeight below.
-    private let rowHeights: [CGFloat] = [175, 82, 132, 82, 98]
-    private let companionTopInset: CGFloat = 6
-    // The next row's own node circle isn't flush with its row's start --
-    // its center sits 40pt down from the row boundary, but its rendered
-    // radius (~57pt, from LessonNodeButton's nodeSize+18) is bigger than
-    // that, so the node visually pokes back UP past its own row's start by
-    // about (57-40)=17pt. Confirmed by screenshot: with the old 10pt
-    // margin, Marcus's arm visibly overlapped the next node. This margin
-    // has to absorb that encroachment plus a real visual gap, not just
-    // reach the nominal row boundary.
-    private let companionBottomMargin: CGFloat = 34
-    // Marcus's speech bubble + character image need real room to render
-    // at a legible size (not just "whatever's left after the node") --
-    // below this, scaledToFit would squash the image into a sliver.
-    private let companionMinHeight: CGFloat = 85
-
-    var body: some View {
-        GeometryReader { proxy in
-            let width = proxy.size.width
-            let centers = pathCenters(in: width)
-            let totalHeight = rowHeights.reduce(0, +)
-
-            ZStack(alignment: .topLeading) {
-                DottedLessonConnector(
-                    points: centers,
-                    routeLeftAfterIndex: unit.lessons.firstIndex(where: { $0.state == .available })
-                )
-                    .stroke(
-                        Color.poiseMuted.opacity(0.22),
-                        style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round, dash: [2, 12])
+    // Pale tint plus the soft light disc the character sits against in the
+    // mockup -- the photo panel covers the disc's right half, so only the arc
+    // beside the text shows.
+    private var heroBackground: some View {
+        ZStack(alignment: .trailing) {
+            LinearGradient(
+                colors: [Color.poiseSoftBlue, Color.poisePaleBlue],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            // Radial, not a flat fill: a solid circle left a hard arc cutting
+            // across the description text.
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [Color.white.opacity(0.6), Color.white.opacity(0)],
+                        center: .center,
+                        startRadius: 30,
+                        endRadius: 118
                     )
-                    .frame(width: width, height: totalHeight)
-                    .allowsHitTesting(false)
+                )
+                .frame(width: 236, height: 236)
+                .offset(x: -16)
+        }
+    }
+}
 
-                VStack(spacing: 0) {
-                    ForEach(Array(unit.lessons.enumerated()), id: \.element.id) { index, lesson in
-                        LessonPathRow(
-                            lesson: lesson,
-                            side: side(for: index),
-                            width: width,
-                            height: rowHeights[safe: index] ?? 174,
-                            action: { onTap(lesson) }
-                        )
+// The trailing slice of the hero card: fills its full height edge-to-edge,
+// clipped only by the card's own corner radius.
+private struct HeroCharacterPanel: View {
+    var body: some View {
+        Color.clear
+            .overlay {
+                Image(uiImage: CharacterCrops.heroPanel ?? UIImage())
+                    .resizable()
+                    .scaledToFill()
+            }
+            .clipped()
+            .accessibilityHidden(true)
+    }
+}
+
+// How long a lesson takes, shown wherever one can be started. The number is
+// derived from the lesson's turn count (see MockLessonContent), not hand-set.
+private struct DurationLabel: View {
+    let minutes: Int
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "clock")
+                .font(.system(size: 11, weight: .semibold))
+            Text("\(minutes) min")
+                .font(PoiseType.caption())
+        }
+        .foregroundStyle(Color.poiseMuted)
+        .accessibilityLabel("About \(minutes) minutes")
+    }
+}
+
+// MARK: - Unit detail
+
+// Opened by tapping a unit card. Lists every lesson in the unit so the user
+// can pick one directly instead of being routed through "up next" -- nothing
+// is locked, so any row is startable in any order.
+private struct UnitDetailSheet: View {
+    let unit: LessonUnit
+    let accent: Color
+    let upNextLessonID: String?
+    let onSelect: (LessonNode) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    private var completedCount: Int {
+        unit.lessons.filter { $0.state == .completed }.count
+    }
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 22) {
+                header
+
+                PoiseSection(title: "Lessons") {
+                    PoiseSurfaceCard(padding: 0) {
+                        VStack(spacing: 0) {
+                            ForEach(Array(unit.lessons.enumerated()), id: \.element.id) { index, lesson in
+                                if index > 0 {
+                                    PoiseDivider().padding(.leading, 68)
+                                }
+                                LessonRow(
+                                    lesson: lesson,
+                                    number: index + 1,
+                                    accent: accent,
+                                    isUpNext: lesson.id == upNextLessonID,
+                                    action: { onSelect(lesson) }
+                                )
+                            }
+                        }
                     }
                 }
 
-                // Drawn as its own top-level layer (not nested inside a row's
-                // HStack) and positioned explicitly from the same `centers`
-                // used for the connector line, so its height can never be
-                // constrained by -- or overflow into and get drawn-over by --
-                // a fixed row height. Always on top, next to whichever lesson
-                // is currently .available.
-                if let availableIndex = unit.lessons.firstIndex(where: { $0.state == .available }) {
-                    let anchor = centers[availableIndex]
-                    let nodeHalfWidth = min(96, width * 0.28) / 2
-                    // Bounded by the ACTUAL remaining space to the right of
-                    // the node, not an arbitrary floor -- a floor bigger
-                    // than what's really available let the bubble spill
-                    // past the true screen edge. 16pt safety margin from
-                    // the container's right edge.
-                    let companionLeadingX = anchor.x + nodeHalfWidth + 12
-                    let companionWidth = max(150, width - companionLeadingX - 16)
-                    // Derived from the actual available row's real start/end
-                    // (not a fixed absolute position independent of which
-                    // row is current, which previously only happened to look
-                    // right for one specific index and let Marcus's bottom
-                    // edge sit just 14pt from the next row's node). Starts
-                    // near the row's own top (companionTopInset) like the
-                    // node itself does, and is capped so it can never reach
-                    // the next row -- but never shrunk below companionMinHeight,
-                    // since a too-small budget would squash the character
-                    // image into an illegibly tiny sliver instead of leaving
-                    // it at a normal size.
-                    let rowStart = rowHeights[0..<availableIndex].reduce(0, +)
-                    let rowEnd = rowStart + rowHeights[availableIndex]
-                    let companionTop = rowStart + companionTopInset
-                    let companionHeight = max(companionMinHeight, rowEnd - companionTop - companionBottomMargin)
+                Color.clear.frame(height: 8)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+        }
+        .background(Color.poiseCanvas.ignoresSafeArea())
+    }
 
-                    MarcusCompanion()
-                        .frame(width: companionWidth)
-                        .frame(height: companionHeight, alignment: .top)
-                        .position(
-                            x: companionLeadingX + companionWidth / 2,
-                            y: companionTop + companionHeight / 2
-                        )
-                        .allowsHitTesting(false)
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top) {
+                PoiseIconBadge(icon: unit.lessons.first?.icon ?? "book.fill", color: accent, size: 44)
+                Spacer()
+                Button(action: { dismiss() }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Color.poiseMuted)
+                        .frame(width: 32, height: 32)
+                        .background(Color.white)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Color.poiseBorder, lineWidth: 1))
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close")
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                PoiseEyebrow(text: UnitLabelFormatter.eyebrow(unit))
+                Text(UnitLabelFormatter.topic(unit))
+                    .font(PoiseType.title())
+                    .foregroundStyle(Color.poiseNavy)
+                Text(unit.subtitle)
+                    .font(PoiseType.subhead())
+                    .foregroundStyle(Color.poiseMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                SegmentedProgressBar(total: unit.lessons.count, completed: completedCount, tint: accent)
+                Text("\(completedCount) of \(unit.lessons.count) lessons complete")
+                    .font(PoiseType.caption())
+                    .foregroundStyle(Color.poiseMuted)
             }
         }
-        .frame(height: rowHeights.reduce(0, +))
-    }
-
-    private func side(for index: Int) -> LessonSide {
-        sides[safe: index] ?? (index.isMultiple(of: 2) ? .left : .right)
-    }
-
-    private func pathCenters(in width: CGFloat) -> [CGPoint] {
-        var y: CGFloat = 0
-        return unit.lessons.indices.map { index in
-            let rowHeight = rowHeights[safe: index] ?? 174
-            let side = side(for: index)
-            let x = nodeCenterX(for: side, width: width)
-            let point = CGPoint(x: x, y: y + 40)
-            y += rowHeight
-            return point
-        }
     }
 }
 
-private struct LessonPathRow: View {
+private struct LessonRow: View {
     let lesson: LessonNode
-    let side: LessonSide
-    let width: CGFloat
-    let height: CGFloat
+    let number: Int
+    let accent: Color
+    let isUpNext: Bool
     let action: () -> Void
+
+    private var isCompleted: Bool { lesson.state == .completed }
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            LessonNodeButton(lesson: lesson, action: action)
-                .frame(width: nodeColumnWidth)
-                .position(x: nodeX, y: 40)
+        Button(action: action) {
+            HStack(spacing: 14) {
+                marker
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(lesson.displayTitle)
+                        .font(PoiseType.body(.bold))
+                        .foregroundStyle(Color.poiseNavy)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if isUpNext {
+                        PoiseEyebrow(text: "Up next", color: .poiseBlueDark)
+                    } else if isCompleted {
+                        Text("Completed")
+                            .font(PoiseType.caption())
+                            .foregroundStyle(Color.poiseMuted)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                DurationLabel(minutes: lesson.estimatedMinutes)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Color.poiseMuted)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
         }
-        .frame(width: width, height: height)
+        .buttonStyle(PoisePressableStyle())
+        .accessibilityLabel("Lesson \(number), \(lesson.title)\(isCompleted ? ", completed" : "")")
     }
 
-    private var nodeX: CGFloat {
-        nodeCenterX(for: side, width: width)
-    }
-
-    private var nodeColumnWidth: CGFloat {
-        min(96, width * 0.28)
+    // The row's leading slot is always the same 38pt square: a checkmark once
+    // the lesson is done, its position in the unit otherwise.
+    private var marker: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 38 * 0.3, style: .continuous)
+                .fill(isCompleted ? Color.poiseMintDark.opacity(0.13) : accent.opacity(0.13))
+            if isCompleted {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(Color.poiseMintDark)
+            } else {
+                Text("\(number)")
+                    .font(PoiseType.body(.bold))
+                    .foregroundStyle(accent)
+            }
+        }
+        .frame(width: 38, height: 38)
     }
 }
 
-private struct LessonNodeButton: View {
-    let lesson: LessonNode
+// MARK: - Units
+
+private struct UnitGridCard: View {
+    let unit: LessonUnit
+    let accent: Color
     let action: () -> Void
 
-    private var nodeSize: CGFloat {
-        lesson.isCheckpoint ? 72 : 74
+    private var completedCount: Int {
+        unit.lessons.filter { $0.state == .completed }.count
     }
 
-    private var topFill: Color {
-        switch lesson.state {
-        case .completed: return Color(red: 0.22, green: 0.84, blue: 0.56)
-        case .available: return Color(red: 0.10, green: 0.55, blue: 0.98)
-        case .locked: return Color(red: 0.92, green: 0.94, blue: 0.96)
-        case .checkpoint: return Color(red: 1.0, green: 0.78, blue: 0.20)
-        }
-    }
+    private var isComplete: Bool { completedCount == unit.lessons.count }
 
-    private var lowerFill: Color {
-        switch lesson.state {
-        case .completed: return Color(red: 0.22, green: 0.65, blue: 0.46)
-        case .available: return Color.poiseBlueDark
-        case .locked: return Color(red: 0.76, green: 0.79, blue: 0.83)
-        case .checkpoint: return Color(red: 0.91, green: 0.60, blue: 0.08)
-        }
-    }
+    // The accent tint marks a FINISHED unit -- earned state, not a selection.
+    // Every card keeps its chevron either way, since a completed unit is still
+    // open for revisiting. Split out of `body` because the inline ternaries
+    // pushed the whole view past the type checker's budget.
+    private var surfaceFill: Color { isComplete ? accent.opacity(0.06) : .white }
+    private var surfaceStroke: Color { isComplete ? accent.opacity(0.5) : .poiseBorder }
+    private var surfaceStrokeWidth: CGFloat { isComplete ? 1.75 : 1 }
 
-    private var ringFill: Color {
-        switch lesson.state {
-        case .completed: return Color(red: 0.63, green: 0.95, blue: 0.78)
-        case .available: return Color.poiseSoftBlue
-        case .locked: return Color(red: 0.96, green: 0.97, blue: 0.98)
-        case .checkpoint: return Color(red: 1.0, green: 0.87, blue: 0.42)
-        }
+    private var statusText: String {
+        // The empty bar already says "not started"; what the user doesn't
+        // know about an untouched unit is how long it is.
+        if isComplete { return "Completed" }
+        if completedCount == 0 { return "\(unit.lessons.count) lessons" }
+        return "\(completedCount) of \(unit.lessons.count) lessons"
     }
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 6) {
-                ZStack(alignment: .top) {
-                    Circle()
-                        .fill(ringFill)
-                        .frame(width: nodeSize + 8, height: nodeSize + 8)
-                        .shadow(color: Color.poiseNavy.opacity(0.12), radius: 5, x: 0, y: 3)
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .top) {
+                    PoiseIconBadge(icon: unit.lessons.first?.icon ?? "book.fill", color: accent)
+                    Spacer(minLength: 4)
+                    // Always the chevron: this slot is the affordance, and
+                    // every card opens. Completion belongs down in the
+                    // progress row with the rest of the progress information.
+                    // Full-strength, not 60%: this chevron is the only thing
+                    // signalling the card opens, and at 0.6 it measured
+                    // 2.09:1 -- under the 3:1 WCAG minimum for non-text UI.
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Color.poiseMuted)
+                }
 
-                    Circle()
-                        .fill(lowerFill)
-                        .frame(width: nodeSize, height: nodeSize)
-                        .offset(y: 2)
+                Spacer().frame(height: 12)
 
-                    Circle()
-                        .fill(topFill)
-                        .frame(width: nodeSize, height: nodeSize)
-                        .overlay {
-                            Image(systemName: iconName)
-                                .font(.system(size: iconSize, weight: .heavy))
-                                .foregroundStyle(iconColor)
-                        }
+                PoiseEyebrow(text: UnitLabelFormatter.eyebrow(unit))
 
-                    if lesson.state == .available {
-                        Text("START")
-                            .font(.system(size: 11, weight: .heavy, design: .rounded))
-                            .foregroundStyle(Color.poiseBlue)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 5)
-                            .background(Color.poisePaleBlue.opacity(0.96))
-                            .clipShape(Capsule())
-                            .offset(y: -18)
-                            .shadow(color: Color.poiseBlue.opacity(0.10), radius: 5, x: 0, y: 2)
+                Spacer().frame(height: 3)
+
+                // One rung down the ladder (14pt, not 16) so every unit name
+                // fits on a single line: at 16pt "Hard Conversations" measured
+                // 148.4pt against 147pt of content width -- over by 1.4pt, and
+                // that single wrap was what made its row taller than the other
+                // (the grid equalizes heights WITHIN a row, not between rows).
+                // At 14pt it needs ~130pt, leaving real margin. One line
+                // everywhere means all four cards match with no reserved
+                // whitespace. minimumScaleFactor is a safety net for any
+                // future unit name longer than these four -- it shrinks rather
+                // than truncating, and never fires for the current set.
+                Text(UnitLabelFormatter.topic(unit))
+                    .font(PoiseType.subhead(.bold))
+                    .foregroundStyle(Color.poiseNavy)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                Spacer(minLength: 12)
+
+                SegmentedProgressBar(total: unit.lessons.count, completed: completedCount, tint: accent)
+
+                Spacer().frame(height: 9)
+
+                Text(statusText)
+                    .font(PoiseType.caption())
+                    .foregroundStyle(Color.poiseMuted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(surfaceFill)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(surfaceStroke, lineWidth: surfaceStrokeWidth)
+            )
+            .shadow(color: .poiseNavy.opacity(0.05), radius: 8, x: 0, y: 4)
+        }
+        .buttonStyle(PoisePressableStyle())
+        .accessibilityLabel("\(UnitLabelFormatter.topic(unit)), \(completedCount) of \(unit.lessons.count) lessons complete")
+        .accessibilityHint("Opens this unit's lessons")
+    }
+}
+
+// A row of `total` capsule segments (5 segments / 4 gaps for our real
+// 5-lessons-per-unit data) instead of one continuous fill bar -- each
+// completed lesson lights up its own segment, so progress reads as
+// discrete steps rather than an ambiguous percentage.
+private struct SegmentedProgressBar: View {
+    let total: Int
+    let completed: Int
+    var tint: Color = .poiseBlue
+    var height: CGFloat = 6
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(0..<max(total, 1), id: \.self) { index in
+                Capsule()
+                    .fill(index < completed ? tint : Color.poiseTrack)
+                    .frame(height: height)
+            }
+        }
+        .accessibilityLabel("\(completed) of \(total) lessons complete")
+    }
+}
+
+// MARK: - Weekly activity
+
+// Real per-day data (already tracked for the Progress tab) rather than a
+// single summary number -- seven marks make the week's shape legible at a
+// glance and give the page a quiet visual anchor at the bottom.
+private struct WeeklyActivityCard: View {
+    let snapshot: ProgressSnapshot
+
+    // Both of these live on ProgressSnapshot now -- the greeting at the top of
+    // the page quotes the same numbers.
+    private var week: [PracticeDay] { snapshot.weekEndingToday }
+    private var practicedThisWeek: Int { snapshot.practicedThisWeek }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text("\(practicedThisWeek) of \(snapshot.weeklyGoal)")
+                    .font(PoiseType.headline())
+                    .foregroundStyle(Color.poiseNavy)
+                Text("sessions practiced")
+                    .font(PoiseType.subhead(.semibold))
+                    .foregroundStyle(Color.poiseMuted)
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 7) {
+                ForEach(week) { day in
+                    DayMark(day: day)
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .poiseCard(radius: 20)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(practicedThisWeek) of \(snapshot.weeklyGoal) sessions practiced this week")
+    }
+}
+
+private struct DayMark: View {
+    let day: PracticeDay
+
+    var body: some View {
+        VStack(spacing: 7) {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(day.practiced ? Color.poiseBlue : Color.poiseTrack)
+                .frame(height: 36)
+                .overlay {
+                    if day.practiced {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 12, weight: .heavy))
+                            .foregroundStyle(.white)
                     }
                 }
-                .frame(width: nodeSize + 18, height: nodeSize + 22)
+                .overlay {
+                    if day.isToday {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(Color.poiseBlueDark, lineWidth: 2)
+                    }
+                }
 
-                Text(lessonTitle)
-                    .font(.system(size: 12, weight: .heavy, design: .rounded))
-                    .foregroundStyle(Color.poiseNavy)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.76)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 110)
-            }
-            .contentShape(Rectangle())
+            Text(day.weekday)
+                .font(PoiseType.eyebrow(day.isToday ? .heavy : .bold))
+                .foregroundStyle(day.isToday ? Color.poiseNavy : Color.poiseMuted)
         }
-        .buttonStyle(.plain)
-        .disabled(lesson.state == .locked || lesson.state == .checkpoint)
-        .accessibilityLabel("\(lesson.title), \(lesson.subtitle)")
-    }
-
-    private var lessonTitle: String {
-        lesson.title == "Mediating a conflict" ? "Mediating conflict" : lesson.title
-    }
-
-    private var iconName: String {
-        if lesson.isCheckpoint { return "flag.fill" }
-        return lesson.icon
-    }
-
-    private var iconSize: CGFloat {
-        switch lesson.state {
-        case .available: return 34
-        case .checkpoint: return 36
-        default: return 38
-        }
-    }
-
-    private var iconColor: Color {
-        lesson.state == .locked ? Color.poiseMuted : .white
+        .frame(maxWidth: .infinity)
     }
 }
 
-private struct MarcusCompanion: View {
-    var body: some View {
-        // Marcus on the left, bubble on his right -- the bubble's tail
-        // points left (toward his head) to match that arrangement.
-        HStack(alignment: .top, spacing: 6) {
-            Image("MarcusWaving")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 104)
-                .accessibilityHidden(true)
+// MARK: - Character
 
-            SpeechBubble(text: "Let’s work through it together.")
-                .frame(width: bubbleWidth, alignment: .leading)
-                .padding(.top, 10)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityLabel("Marcus says, let’s work through it together")
+// Still frames of the character (not the looping video -- see
+// CharacterAnimationView), cropped once and cached.
+//
+// Measured directly against the source asset (3537x2100) rather than eyeballed:
+// a hair mask puts the face's horizontal center at x = 49.69%, the hair top at
+// y = 22.8% and the chin around y = 50%; the desk edge cuts in around y = 82%.
+// Every crop below is centered on that measured face center, which is what
+// keeps him from sitting off to one side of the frame.
+private enum CharacterCrops {
+    private static var cache: [String: UIImage] = [:]
+
+    private static let faceCenterX: CGFloat = 0.4969
+
+    // Portrait slice for the hero card's trailing panel: head high in the
+    // frame with the skyline behind him, cut just above the desk (whose top
+    // edge measures at y = 81.3%) so the bottom is torso, not a tan sliver of
+    // desktop. Width is derived from the panel's own aspect ratio so nothing
+    // is re-cropped at display time.
+    static var heroPanel: UIImage? {
+        crop(key: "hero", top: 0.05, bottom: 0.805, aspect: 126.0 / 184.0)
     }
 
-    private var bubbleWidth: CGFloat {
-        88
-    }
-}
-
-private struct SpeechBubble: View {
-    let text: String
-
-    var body: some View {
-        Text(text)
-            .font(.system(size: 12, weight: .heavy, design: .rounded))
-            .foregroundStyle(Color.poiseNavy)
-            .multilineTextAlignment(.leading)
-            .lineLimit(nil)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 9)
-            .background(Color.poiseSoftBlue.opacity(0.92))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(alignment: .leading) {
-                SpeechBubbleTail()
-                    .fill(Color.poiseSoftBlue.opacity(0.92))
-                    .frame(width: 9, height: 14)
-                    .offset(x: -7)
-            }
+    private static func crop(key: String, top: CGFloat, bottom: CGFloat, aspect: CGFloat) -> UIImage? {
+        if let cached = cache[key] { return cached }
+        guard let source = UIImage(named: "CharFullFrame"), let cgImage = source.cgImage else { return nil }
+        let width = CGFloat(cgImage.width)
+        let height = CGFloat(cgImage.height)
+        let cropHeight = (bottom - top) * height
+        let cropWidth = cropHeight * aspect
+        let cropRect = CGRect(
+            x: faceCenterX * width - cropWidth / 2,
+            y: top * height,
+            width: cropWidth,
+            height: cropHeight
+        )
+        guard let cropped = cgImage.cropping(to: cropRect.integral) else { return nil }
+        let image = UIImage(cgImage: cropped, scale: source.scale, orientation: source.imageOrientation)
+        cache[key] = image
+        return image
     }
 }
 
-// A small left-pointing carat so the bubble reads as dialogue rather than
-// a floating label -- Marcus sits to the bubble's left, so the tail points
-// left toward him.
-private struct SpeechBubbleTail: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.maxX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + rect.height * 0.4))
-        path.closeSubpath()
-        return path
+// MARK: - Formatting
+
+// `LessonUnit.label` is a combined "Unit 1 · Giving Feedback" string --
+// split it once here into the small "UNIT 1" eyebrow and the "Giving
+// Feedback" topic name shown as titles, instead of adding new fields to
+// the model for what's really just formatting.
+private enum UnitLabelFormatter {
+    private static func parts(_ unit: LessonUnit) -> [String] {
+        unit.label.split(separator: "\u{00B7}").map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+
+    // "UNIT 1" for the tracked uppercase eyebrow treatment.
+    static func eyebrow(_ unit: LessonUnit) -> String {
+        unitName(unit).uppercased()
+    }
+
+    // "Unit 1" as written, for running text. The Up Next card pairs this with
+    // the lesson position so its detail line speaks the same vocabulary as the
+    // grid's eyebrows -- that line is the only link between the two sections
+    // now that no unit card is highlighted.
+    static func unitName(_ unit: LessonUnit) -> String {
+        parts(unit).first ?? unit.label
+    }
+
+    static func topic(_ unit: LessonUnit) -> String {
+        let split = parts(unit)
+        return split.count > 1 ? split[1] : unit.title
     }
 }
 
-private struct DottedLessonConnector: Shape {
-    let points: [CGPoint]
-    // The companion character stands just to the right of whichever node is
-    // .available, so the segment leaving THAT node needs to route away from
-    // it (left, under its label, then across) instead of the normal
-    // crossed-control sweep toward the destination's side -- which for a
-    // left-side node would sweep the track rightward, straight through
-    // where the companion stands. nil when no lesson is available (shouldn't
-    // normally happen, but degrades to the default routing rather than
-    // crashing on an out-of-range index).
-    var routeLeftAfterIndex: Int?
-
-    // Two earlier attempts at pure vertical clearance (76pt, then 98pt)
-    // still let the track cut through label text -- confirmed by an actual
-    // zoomed screenshot crop, not just eyeballing the full page. Root
-    // problem with that whole approach: as long as the curve stays at the
-    // departure node's x position while descending past its label (which
-    // sits directly below the node, in the same column), no vertical
-    // clearance number fixes it -- the fix has to move the curve OUT of
-    // that column before it reaches label height, not just further down
-    // within it.
-    //
-    // This uses "crossed" control points: control1 is placed near the
-    // DESTINATION's x (not the source's), just a little below the source;
-    // control2 is placed near the SOURCE's x, just above the destination.
-    // That makes the curve's initial direction already diagonal, sweeping
-    // toward the other column almost immediately after leaving each node,
-    // so it's clear of both nodes' label columns well before it reaches
-    // label height -- a structural fix, not a tuned distance.
-    private let earlyOffset: CGFloat = 34
-    // When two consecutive nodes are on the SAME side, previous.x ==
-    // current.x, so the crossed-control-point trick has no x-difference to
-    // work with and degenerates back into a straight vertical line through
-    // the label. Force a minimum sideways bow (toward the empty opposite
-    // side) in that case -- labels are at most 110pt wide, so half that
-    // plus margin clears them.
-    private let minLateralBow: CGFloat = 115
-    // The route-left-around-the-companion case sweeps left much further
-    // (minLateralBow) than it descends (earlyOffset=34), so with the
-    // ordinary earlyOffset its early trajectory stays close to the label's
-    // TOP edge while still moving left -- confirmed by an actual pixel
-    // crop showing a dot grazing the "N" in "Naming". Give this case its
-    // own, larger vertical offset so it's already past the label's top
-    // before sweeping wide.
-    private let leftRouteEarlyOffset: CGFloat = 70
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        guard let first = points.first else { return path }
-        path.move(to: first)
-
-        for index in 1..<points.count {
-            let previous = points[index - 1]
-            let current = points[index]
-            if index - 1 == routeLeftAfterIndex {
-                // No straight segments and no sharp corners -- two cubic
-                // beziers, joined at a waypoint with MATCHING tangents (both
-                // arrive at and leave the waypoint heading straight down),
-                // so the join reads as one continuous curve, not a corner.
-                // The first curve's own control points make it leave the
-                // node heading almost straight left (not downward) and
-                // arrive at the waypoint heading straight down.
-                //
-                // Solved the x(t)/y(t) equations by hand for this exact
-                // control-point setup (not just previewed): x drops below
-                // the label's left edge by t=0.27, while y is still only
-                // ~11 at that point (the label doesn't start until ~47) --
-                // so the curve is already outside the label's column well
-                // before it reaches label height, and after the waypoint
-                // the curve stays past the label's bottom edge for its
-                // entire second half. No t-value puts it inside the box.
-                let waypoint = CGPoint(x: previous.x - 75, y: previous.y + 100)
-                path.addCurve(
-                    to: waypoint,
-                    control1: CGPoint(x: previous.x - 66, y: previous.y),
-                    control2: CGPoint(x: waypoint.x, y: waypoint.y - 40)
-                )
-                path.addCurve(
-                    to: current,
-                    control1: CGPoint(x: waypoint.x, y: waypoint.y + 40),
-                    control2: CGPoint(x: current.x, y: current.y - earlyOffset)
-                )
-                continue
-            }
-
-            let dx = current.x - previous.x
-            let bowedTargetX: CGFloat = abs(dx) >= minLateralBow
-                ? current.x
-                : current.x + (dx >= 0 ? minLateralBow : -minLateralBow)
-
-            path.addCurve(
-                to: current,
-                control1: CGPoint(x: bowedTargetX, y: previous.y + earlyOffset),
-                control2: CGPoint(x: previous.x, y: current.y - earlyOffset)
-            )
-        }
-
-        return path
-    }
-}
-
-private func nodeCenterX(for side: LessonSide, width: CGFloat) -> CGFloat {
-    let inset = min(112, max(80, width * 0.29))
-    switch side {
-    case .left:
-        return inset
-    case .right:
-        return width - inset
-    }
-}
-
-private extension Array {
-    subscript(safe index: Int) -> Element? {
-        indices.contains(index) ? self[index] : nil
-    }
+#Preview {
+    LearnView()
 }
