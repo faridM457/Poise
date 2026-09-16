@@ -1,47 +1,118 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import {
+  BedrockRuntimeClient,
+  ConverseCommand,
+} from "@aws-sdk/client-bedrock-runtime";
 
-// Model alias resolved by the Claude Code CLI the SDK shells out to
-// ('haiku' | 'sonnet' | 'opus', or a full model ID). Defaults to the
-// cheapest tier since each engine stage is a short, single-shot call.
-const MODEL = process.env.CLAUDE_ENGINE_MODEL || "haiku";
+// Claude on Amazon Bedrock.
+//
+// Replaces the Claude Agent SDK, which shelled out to the local Claude Code
+// CLI and borrowed its login. That was convenient — no key to manage — but it
+// was a per-developer credential on one laptop, so the engine could never be
+// deployed. Bedrock authenticates with ordinary AWS credentials, which a
+// deployed server can hold (or better, assume via an IAM role).
+//
+// Required environment:
+//   AWS_REGION              e.g. us-east-1 (or us-west-2)
+//   AWS_ACCESS_KEY_ID       omit both when running with an IAM role
+//   AWS_SECRET_ACCESS_KEY
+//   BEDROCK_MODEL_ID        optional, see below
+//
+// Model access is NOT on by default: Anthropic models have to be enabled for
+// your account, per region, in the Bedrock console under Model access.
+// Requests before that return AccessDeniedException, which is mapped to a
+// readable message below. Newer Claude models are also served through
+// cross-region inference profiles whose ids carry a region prefix
+// ("us.anthropic.…"); if a plain model id is rejected as invalid, that prefix
+// is usually what is missing.
+const MODEL_ID =
+  process.env.BEDROCK_MODEL_ID || "us.anthropic.claude-haiku-4-5-20251001-v1:0";
 
-// Runs a single-turn query against Claude via the Agent SDK, which shells out
-// to the local Claude Code CLI and reuses its login — a Claude Pro/Max
-// subscription login counts against plan usage, not per-token API billing.
-// `outputFormat: {type: "json_schema"}` forces the turn to end with a
-// response matching `schema`, so callers get back parsed, structured JSON
-// instead of free text.
-export async function structuredCall({ system, messages, schema }) {
+// Left to the SDK's own resolution chain when AWS_REGION is unset, so a
+// machine already configured for AWS (~/.aws/config) is not silently
+// overridden by a hardcoded default pointing at the wrong region -- where the
+// model list, and therefore model access, is different.
+const REGION = process.env.AWS_REGION;
+
+const client = new BedrockRuntimeClient(REGION ? { region: REGION } : {});
+
+function regionLabel() {
+  return REGION ?? "the region from your AWS config";
+}
+
+// Runs a single-turn call and returns parsed, schema-conforming JSON.
+//
+// Structure is enforced through tool use rather than by asking for JSON in the
+// prompt: the schema is declared as a tool's input schema and `toolChoice`
+// forces the model to call it, so the response is a validated object instead
+// of prose that has to be parsed and might not be JSON at all.
+//
+// `toolName` and `maxTokens` were already being passed by every call site and
+// silently dropped by the previous wrapper, which destructured only
+// { system, messages, schema }. They are honoured now — which matters most for
+// generateFeedback, whose response carries a feedback line plus three skill
+// notes.
+export async function structuredCall({
+  system,
+  messages,
+  schema,
+  toolName = "submit_response",
+  maxTokens = 512,
+}) {
   const prompt = messages.map((m) => m.content).join("\n\n");
 
-  let assistantError = null;
-
-  for await (const message of query({
-    prompt,
-    options: {
-      model: MODEL,
-      systemPrompt: system,
-      outputFormat: { type: "json_schema", schema },
-      tools: [],
-      maxTurns: 4,
-      permissionMode: "default",
-    },
-  })) {
-    if (message.type === "assistant" && message.error) {
-      assistantError = message.error;
-    }
-
-    if (message.type === "result") {
-      if (message.subtype === "success" && !message.is_error) {
-        return sanitizeStructuredOutput(message.structured_output);
-      }
-
-      const reason = message.subtype === "success" ? message.result : message.subtype;
-      throw new Error(describeAgentFailure(reason, assistantError));
-    }
+  let response;
+  try {
+    response = await client.send(
+      new ConverseCommand({
+        modelId: MODEL_ID,
+        system: [{ text: system }],
+        messages: [{ role: "user", content: [{ text: prompt }] }],
+        inferenceConfig: {
+          maxTokens,
+          // Low but not zero: these are short, structured generations where
+          // the scenario specifics should still vary between plays.
+          temperature: 0.7,
+        },
+        toolConfig: {
+          tools: [
+            {
+              toolSpec: {
+                name: toolName,
+                description: "Return the structured result for this request.",
+                inputSchema: { json: schema },
+              },
+            },
+          ],
+          toolChoice: { tool: { name: toolName } },
+        },
+      })
+    );
+  } catch (error) {
+    throw new Error(describeBedrockFailure(error));
   }
 
-  throw new Error("Agent SDK query ended without producing a result.");
+  // A forced toolChoice should always produce exactly one toolUse block, but
+  // a truncated response (maxTokens too low) can come back without one —
+  // which is a far more useful thing to say than "cannot read property of
+  // undefined" three frames later.
+  const blocks = response?.output?.message?.content ?? [];
+  const toolUse = blocks.find((block) => block.toolUse)?.toolUse;
+
+  if (!toolUse) {
+    const stop = response?.stopReason ?? "unknown";
+    if (stop === "max_tokens") {
+      throw new Error(
+        `Model hit the ${maxTokens}-token limit for ${toolName} before returning a complete result. Raise maxTokens at the call site.`
+      );
+    }
+    const text = blocks.find((block) => block.text)?.text;
+    throw new Error(
+      `Model did not call ${toolName} (stopReason: ${stop})` +
+        (text ? `. It replied with text instead: ${text.slice(0, 200)}` : "")
+    );
+  }
+
+  return sanitizeStructuredOutput(toolUse.input);
 }
 
 // Prompting alone doesn't reliably keep the model off em dashes, stage
@@ -75,15 +146,49 @@ function sanitizeText(text) {
     .trim();
 }
 
-function describeAgentFailure(reason, assistantError) {
-  if (assistantError === "rate_limit") {
-    return "Hit your Claude Pro/Max plan's usage limit for this window. Wait for it to reset, or set CLAUDE_ENGINE_MODEL and try a lighter model.";
+// Bedrock's exceptions are precise but their messages assume you already know
+// the service. These are the four that actually come up while setting it up.
+function describeBedrockFailure(error) {
+  const name = error?.name ?? "";
+
+  if (name === "AccessDeniedException") {
+    return (
+      `Bedrock denied access to ${MODEL_ID} in ${regionLabel()}. Either the IAM principal lacks ` +
+      `bedrock:InvokeModel, or Anthropic model access has not been enabled for this account ` +
+      `in that region (Bedrock console, Model access).`
+    );
   }
-  if (assistantError === "authentication_failed" || assistantError === "oauth_org_not_allowed") {
-    return "Not logged in to Claude Code (or the session is invalid). Run `claude login` and try again.";
+  if (name === "ValidationException") {
+    return (
+      `Bedrock rejected the request for ${MODEL_ID}: ${error.message}. If the model id is ` +
+      `reported as invalid, it may need the cross-region inference prefix (us.${MODEL_ID}).`
+    );
   }
-  if (assistantError === "billing_error" || assistantError === "account_on_hold") {
-    return `Claude account billing issue: ${assistantError}.`;
+  if (name === "ResourceNotFoundException") {
+    // Two quite different situations share this exception, and the message is
+    // the only way to tell them apart.
+    if (/use case details/i.test(error.message ?? "")) {
+      return (
+        "Bedrock requires Anthropic use case details for this AWS account before it will serve " +
+        "the model. Submit the form in the Bedrock console (Model access, Anthropic), then allow " +
+        "about 15 minutes. Calls made before the gate engages can succeed, so a single working " +
+        "request does not mean this step was done."
+      );
+    }
+    return (
+      `Bedrock has no model ${MODEL_ID} in ${regionLabel()}: ${error.message}. The id may be ` +
+      `retired -- check "aws bedrock list-foundation-models --by-provider anthropic" for one ` +
+      `whose lifecycle status is ACTIVE.`
+    );
   }
-  return `Agent SDK call failed: ${reason}`;
+  if (name === "ThrottlingException") {
+    return "Bedrock throttled the request. Retry, or request a quota increase for this model.";
+  }
+  if (name === "CredentialsProviderError" || name === "UnrecognizedClientException") {
+    return (
+      "No usable AWS credentials. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY (or run with " +
+      "an IAM role), and confirm AWS_REGION."
+    );
+  }
+  return `Bedrock call failed (${name || "unknown error"}): ${error?.message ?? error}`;
 }
