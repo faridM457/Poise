@@ -46,36 +46,46 @@ enum PoiseBadgeCatalogue {
         PoiseBadge(
             id: "full-circle",
             title: "Full Circle",
-            requirement: "Finish all 20 lessons",
+            requirement: "Finish every lesson in the app",
             icon: "checkmark.seal.fill",
             group: .milestones
         ),
 
+        // Requirements say "every lesson" rather than a count: Unit 5 has one
+        // more than the others, and a hardcoded number silently lies the next
+        // time the curriculum moves.
         PoiseBadge(
             id: "unit-1",
-            title: "Speak It Plainly",
-            requirement: "Finish all 5 lessons in Unit 1",
-            icon: "bubble.left.and.text.bubble.right.fill",
+            title: "Solid Ground",
+            requirement: "Finish every lesson in Unit 1",
+            icon: "person.2.fill",
             group: .units
         ),
         PoiseBadge(
             id: "unit-2",
-            title: "Steady Under Friction",
-            requirement: "Finish all 5 lessons in Unit 2",
-            icon: "person.2.fill",
+            title: "Speak It Plainly",
+            requirement: "Finish every lesson in Unit 2",
+            icon: "text.bubble.fill",
             group: .units
         ),
         PoiseBadge(
             id: "unit-3",
             title: "Hold Your Line",
-            requirement: "Finish all 5 lessons in Unit 3",
+            requirement: "Finish every lesson in Unit 3",
             icon: "hand.raised.fill",
             group: .units
         ),
         PoiseBadge(
             id: "unit-4",
-            title: "Lead With Steadiness",
-            requirement: "Finish all 5 lessons in Unit 4",
+            title: "Heard in the Room",
+            requirement: "Finish every lesson in Unit 4",
+            icon: "megaphone.fill",
+            group: .units
+        ),
+        PoiseBadge(
+            id: "unit-5",
+            title: "Steady in the Hardest Room",
+            requirement: "Finish every lesson in Unit 5",
             icon: "exclamationmark.triangle.fill",
             group: .units
         ),

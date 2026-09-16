@@ -1,58 +1,204 @@
 // Hardcoded lesson definitions for the local test site.
 // Each lesson matches the "Lesson Input Format" in the conversation engine spec.
 //
-// 4 units, manager-focused, ordered by escalating difficulty. Each unit has
-// 4 regular lessons (also loosely ordered easier-to-harder) plus a
-// checkpoint. `difficultyLabel` and `demoExchange` are engine-only signals
-// (never shown to the user) used to calibrate the NPC's resistance level —
-// see server/engine.js's runTurn. The same demoExchange is reused by every
-// lesson in a unit; finer within-unit progression lives in each lesson's
-// own personaNotes.
+// 5 units, 21 lessons and 5 unit checkpoints, scoped entirely to first-time
+// managers — mirrors Poise/Models/PoiseLessonContent.swift and the structure in
+// conversation-lessons.md. Ids, units, titles, characters and criteria must
+// match that file exactly or the app and the engine disagree about the lesson.
+//
+// Every scenarioTemplate carries a LOCKED clause: the fixed managerial stake
+// the model may not vary. Because the scenario is generated fresh per play,
+// without it the same lesson comes out easy or hard at random and two plays end
+// up testing different skills. Persona, phrasing and curveballs vary; the core
+// problem does not.
+//
+// `difficultyLabel` and `demoExchange` are engine-only signals (never shown to
+// the user) used to calibrate the NPC's resistance — see engine.js runTurn.
 
-const UNIT_1_DEMO = {
+const COOPERATIVE_DEMO = {
   user:
-    "I've noticed you've been a few minutes late to our morning standup a handful of times this month, " +
-    "and it's meant we sometimes start without you. What's been going on there?",
+    "I've noticed the handoff notes have been landing after the client call a few times this month, " +
+    "and it's meant we're briefing them without the full picture. What's been going on there?",
   npc:
-    "Yeah, that's fair, I noticed it too. My commute's been rougher since a construction detour started, " +
-    "and I've been cutting it too close. I can just leave earlier, that's on me.",
+    "Yeah, that's fair, I noticed it too. I've been writing them up at the end of the day instead of " +
+    "straight after the work, and it's been slipping. I can move that earlier, that's on me.",
 };
 
-const UNIT_2_DEMO = {
+const ASSERTIVE_DEMO = {
   user:
-    "Hey, I wanted to mention, in yesterday's planning meeting I noticed you jumped in a few times while " +
-    "I was walking through the roadmap. I'd like a chance to finish my point before we open it up.",
+    "I want to be straight with you: at the current scope we can't hit the 14th. What I can do is " +
+    "give you the core flow on that date, with reporting following two weeks later.",
   npc:
-    "Oh. I didn't realize I was doing that so much. I mean, it's a fast moving meeting, people jump in " +
-    "all the time. But yeah, I hear you, I'll be more aware of it.",
+    "I hear you, but I've already told the board the 14th. Is there genuinely no way to get the whole " +
+    "thing done, even with people pulling extra? I don't love going back to them.",
 };
 
-const UNIT_3_DEMO = {
+const GUARDED_DEMO = {
   user:
-    "I want to be upfront, I don't think I can take this on this week given everything else I have going " +
-    "on. Can we look at pushing the deadline, or finding someone else who has room for it?",
+    "I changed your recommendation in front of the group on Monday without talking to you first. That " +
+    "was my call to make differently, and I didn't. What did that land like for you?",
   npc:
-    "I mean, I was really counting on you for this, everyone else is slammed too. Is there any way you " +
-    "could just fit it in? It shouldn't take that long.",
+    "Honestly? It's fine. You're the manager. I just... wasn't expecting to find out you disagreed at " +
+    "the same time as everyone else in the room. But it's done.",
 };
 
-const UNIT_4_DEMO = {
+const RESISTANT_DEMO = {
   user:
-    "You've missed the report deadline three weeks in a row now, and it's been pushing back my own " +
-    "commitments to leadership. What's been going on?",
+    "You've missed the same commitment three times this quarter. I want to understand what's behind " +
+    "the pattern, because the reasons have been different each time.",
   npc:
-    "I mean, I don't think it's that big a deal. Everyone's been slammed lately, not just me. I don't " +
-    "see why this is turning into a whole conversation.",
+    "I'd push back on calling it a pattern. Two of those were blocked on other teams and everybody " +
+    "knew it. If the cause is different every time, that's not a pattern in how I work.",
+};
+
+const DEMOS = {
+  cooperative: COOPERATIVE_DEMO,
+  assertive: ASSERTIVE_DEMO,
+  guarded: GUARDED_DEMO,
+  resistant: RESISTANT_DEMO,
 };
 
 export const lessons = [
   // ---------------------------------------------------------------------
-  // Unit 1: Giving Feedback (Foundations) — cooperative
+  // Unit 1: Foundations & Expectations
   // ---------------------------------------------------------------------
   {
-    id: "feedback-small-pattern",
-    unit: "Unit 1: Giving Feedback",
-    title: "Naming a Small Pattern",
+    id: "foundations-first-1-1",
+    unit: "Unit 1: Foundations & Expectations",
+    title: "The First 1:1",
+    isCheckpoint: false,
+    difficultyLabel: "cooperative",
+    character: {
+      name: "Dani",
+      role: "New report",
+      relationship: "Joined the user's team last week; was a peer until a reorg",
+    },
+    scenarioTemplate:
+      "The user is holding a first one-on-one with a report who was a peer until a recent reorg. There " +
+      "is no problem to solve -- the task is to set up the working relationship, and the change in " +
+      "status is unacknowledged and slightly awkward for both. LOCKED: no performance issue exists; do " +
+      "not invent one.",
+    criteria: [
+      "State your role and how you'll support them",
+      "Ask what they need from a manager",
+      "Agree on how you'll communicate going forward",
+    ],
+    personaNotes:
+      "Dani is warm but slightly wary, and names the awkwardness early. Responds well to the user " +
+      "acknowledging the change directly; goes flat and polite if the user pretends nothing has " +
+      "changed.",
+    demoExchange: DEMOS.cooperative,
+  },
+  {
+    id: "foundations-clarify-priorities",
+    unit: "Unit 1: Foundations & Expectations",
+    title: "Clarifying Priorities You Created Confusion On",
+    isCheckpoint: false,
+    difficultyLabel: "cooperative",
+    character: {
+      name: "Priya",
+      role: "Direct report",
+      relationship: "5 months on the team, reports to the user",
+    },
+    scenarioTemplate:
+      "The report is splitting time between two workstreams and finishing neither, because the USER " +
+      "gave conflicting signals about which came first. LOCKED: the ambiguity is the user's own fault, " +
+      "not the report's misunderstanding. The report is confused, not at fault, and mildly frustrated.",
+    criteria: [
+      "Acknowledge the conflicting signals you gave",
+      "Identify the single priority and what is explicitly deprioritized",
+      "Ask the report to summarize their next action and surface remaining trade-offs",
+    ],
+    personaNotes:
+      "Priya is straightforward and a bit relieved to be asking. Presses for an explicit answer if the " +
+      "user is vague, and raises a real downstream commitment that the deprioritized work affects.",
+    demoExchange: DEMOS.cooperative,
+  },
+  {
+    id: "foundations-working-style",
+    unit: "Unit 1: Foundations & Expectations",
+    title: "Aligning on Working Style",
+    isCheckpoint: false,
+    difficultyLabel: "assertive",
+    character: {
+      name: "Theo",
+      role: "Direct report",
+      relationship: "3 months on the team, senior hire, reports to the user",
+    },
+    scenarioTemplate:
+      "A recently hired senior report wants materially more autonomy than the user is ready to give, " +
+      "and experiences the user's check-ins as supervision. LOCKED: the user has a legitimate reason " +
+      "for caution (recent misjudged calls) and a middle ground exists; neither full autonomy nor the " +
+      "status quo is the right outcome.",
+    criteria: [
+      "Name the mismatch directly",
+      "Ask what autonomy would look like to them",
+      "Propose a middle ground with decision rights and a review date",
+    ],
+    personaNotes:
+      "Theo is confident and leans on prior experience, but is not hostile. Engages seriously when " +
+      "asked to define autonomy concretely, and concedes specific points where the user has real " +
+      "evidence.",
+    demoExchange: DEMOS.assertive,
+  },
+  {
+    id: "foundations-repair-trust",
+    unit: "Unit 1: Foundations & Expectations",
+    title: "Repairing Trust After Your Managerial Misstep",
+    isCheckpoint: false,
+    difficultyLabel: "guarded",
+    character: {
+      name: "Nadia",
+      role: "Direct report",
+      relationship: "1 year on the team, reports to the user",
+    },
+    scenarioTemplate:
+      "The USER publicly overrode or rewrote the report's work in front of others without consulting " +
+      "them first. LOCKED: the misstep is specifically the user's and is not ambiguous. The report has " +
+      "been polite and distant since and will not raise it unprompted.",
+    criteria: [
+      "Name your specific action and take responsibility for it",
+      "Ask about its impact without defending your intent",
+      "State the behavioral change you'll make and ask what would help rebuild trust",
+    ],
+    personaNotes:
+      "Nadia opens closed-off and insists it's fine. Opens up only if the user names the specific " +
+      "action rather than a vague 'how that came across'. Shuts down again if the user explains their " +
+      "intent.",
+    demoExchange: DEMOS.guarded,
+  },
+  {
+    id: "checkpoint-unit-1",
+    unit: "Unit 1: Foundations & Expectations",
+    title: "Checkpoint: The Reset Conversation",
+    isCheckpoint: true,
+    difficultyLabel: "assertive",
+    character: {
+      name: "Owen",
+      role: "Direct report",
+      relationship: "4 months on the team, reports to the user",
+    },
+    scenarioTemplate:
+      "COMBINES two skills in one conversation: the report is confused about priorities the user " +
+      "themselves muddled, AND is pushing to make those calls without checking in. LOCKED: both issues " +
+      "are live simultaneously and the report will try to use the first as an argument for the second.",
+    criteria: [
+      "Own the ambiguity you created and name a single priority",
+      "Hold a clear line on which decisions remain yours",
+      "Keep the two issues separate instead of trading one for the other",
+    ],
+    personaNotes:
+      "Owen is reasonable and articulate, and explicitly links the two issues -- arguing that unclear " +
+      "direction justifies him deciding alone. Accepts a clear line but not a vague one.",
+    demoExchange: DEMOS.assertive,
+  },
+  // ---------------------------------------------------------------------
+  // Unit 2: Giving Feedback
+  // ---------------------------------------------------------------------
+  {
+    id: "feedback-first-critical",
+    unit: "Unit 2: Giving Feedback",
+    title: "Your First Critical Feedback",
     isCheckpoint: false,
     difficultyLabel: "cooperative",
     character: {
@@ -61,548 +207,535 @@ export const lessons = [
       relationship: "6 months on the team, reports to the user",
     },
     scenarioTemplate:
-      "The user's direct report has been repeatedly a few minutes late to a recurring commitment (e.g. " +
-      "a daily standup, a recurring client call) over the past couple of weeks. The user needs to name " +
-      "the pattern directly in a one-on-one meeting, low stakes but still worth addressing before it " +
-      "becomes a habit.",
+      "The report talked over teammates in a recent meeting, including one raising a real risk. LOCKED: " +
+      "this is a ONE-TIME observed behavior, not an established pattern, and the report is genuinely " +
+      "unaware they did it.",
     criteria: [
-      "Named the specific pattern, not a vague generalization",
-      "Stated the impact of the pattern",
-      "Asked for the direct report's perspective before concluding",
+      "Name the specific behavior",
+      "Explain the impact",
+      "Ask for their perspective",
     ],
     personaNotes:
-      "Sam is receptive and a little embarrassed once the pattern is named, not defensive. Owns it " +
-      "quickly and doesn't need much convincing, but still responds better to a specific, calm approach " +
-      "than a vague one.",
-    demoExchange: UNIT_1_DEMO,
+      "Sam is receptive and a little embarrassed once the behavior is named. Owns it quickly, but " +
+      "responds much better to one specific moment than to a characterization of how they generally " +
+      "behave.",
+    demoExchange: DEMOS.cooperative,
   },
   {
-    id: "feedback-quality-slip",
-    unit: "Unit 1: Giving Feedback",
-    title: "Following Up on a Quality Slip",
+    id: "feedback-experienced-report",
+    unit: "Unit 2: Giving Feedback",
+    title: "Feedback to a More Experienced Report",
     isCheckpoint: false,
-    difficultyLabel: "cooperative",
+    difficultyLabel: "assertive",
     character: {
-      name: "Riley",
+      name: "Margaret",
       role: "Direct report",
-      relationship: "4 months on the team, reports to the user",
+      relationship: "12 years in the field, 2 years on the team, reports to the user",
     },
     scenarioTemplate:
-      "The user's direct report has turned in work with small but repeated quality issues (e.g. typos, " +
-      "formatting errors, missed details) in client-facing material over the past couple of weeks. The " +
-      "user needs to raise the pattern directly without making the direct report feel attacked over " +
-      "honest mistakes.",
+      "The report has substantially more tenure and experience than the user and has been dismissing " +
+      "junior colleagues' questions, who have stopped asking. LOCKED: the experience asymmetry is real " +
+      "and the report will invoke it; the behavior still needs to change.",
     criteria: [
-      "Named the specific quality issue with a concrete example",
-      "Stated why the quality bar matters here",
-      "Asked what's been getting in the way before concluding",
+      "Describe the observed behavior and impact without invoking hierarchy",
+      "Ask for context and use their expertise to test your understanding",
+      "State the expectation that remains yours to set as manager",
     ],
     personaNotes:
-      "Riley is a bit surprised but not defensive, genuinely didn't realize the pattern was noticeable. " +
-      "Responds well to specific examples and opens up quickly about what's been distracting them (e.g. " +
-      "juggling too many small tasks), especially if the user frames it collaboratively.",
-    demoExchange: UNIT_1_DEMO,
+      "Margaret is dry and lightly condescending, and reaches for her experience when challenged. " +
+      "Responds to being consulted as an expert; hardens if the user pulls rank or flatters her.",
+    demoExchange: DEMOS.assertive,
   },
   {
-    id: "feedback-missed-commitment",
-    unit: "Unit 1: Giving Feedback",
-    title: "Addressing a Missed Commitment",
+    id: "feedback-repeated-miss",
+    unit: "Unit 2: Giving Feedback",
+    title: "Addressing a Repeated Miss",
     isCheckpoint: false,
-    difficultyLabel: "cooperative",
+    difficultyLabel: "guarded",
     character: {
-      name: "Taylor",
-      role: "Direct report",
-      relationship: "7 months on the team, reports to the user",
-    },
-    scenarioTemplate:
-      "The user's direct report explicitly agreed, in a previous conversation, to complete a specific " +
-      "task by a specific time, and did not follow through, with no communication about the delay. The " +
-      "user needs to address the broken commitment directly, not just the missed task.",
-    criteria: [
-      "Named the specific commitment that was missed, not a vague generalization",
-      "Stated the impact of the missed commitment",
-      "Asked for the direct report's perspective before concluding",
-    ],
-    personaNotes:
-      "Taylor feels a little guilty and knows they dropped the ball, so they're receptive, but might " +
-      "briefly get slightly defensive if the user leads only with disappointment rather than curiosity. " +
-      "Opens up and takes ownership once given room to explain.",
-    demoExchange: UNIT_1_DEMO,
-  },
-  {
-    id: "feedback-communication-style",
-    unit: "Unit 1: Giving Feedback",
-    title: "Giving Feedback on a Communication Style",
-    isCheckpoint: false,
-    difficultyLabel: "cooperative",
-    character: {
-      name: "Morgan",
-      role: "Direct report",
-      relationship: "9 months on the team, reports to the user",
-    },
-    scenarioTemplate:
-      "The user's direct report is technically strong, but their written updates and messages to the " +
-      "team often come across as terse or hard to follow, and a couple of teammates have mentioned " +
-      "needing to ask for clarification. This is a more subjective piece of feedback than a missed " +
-      "deadline, and the user needs to raise it constructively.",
-    criteria: [
-      "Named the specific communication pattern with a concrete example",
-      "Stated the impact on the team, not just a personal preference",
-      "Asked for the direct report's perspective before concluding",
-    ],
-    personaNotes:
-      "Morgan is a little caught off guard since this is more subjective feedback than they're used to " +
-      "receiving, and might initially push back mildly (\"I didn't realize that, I thought I was being " +
-      "efficient\"). Not defensive though, genuinely wants to understand, and engages constructively " +
-      "once given a concrete example.",
-    demoExchange: UNIT_1_DEMO,
-  },
-  {
-    id: "checkpoint-unit-1",
-    unit: "Unit 1: Giving Feedback",
-    title: "Checkpoint: Giving Feedback",
-    isCheckpoint: true,
-    difficultyLabel: "cooperative",
-    character: {
-      name: "Jamie",
-      role: "Direct report",
-      relationship: "5 months on the team, reports to the user",
-    },
-    scenarioTemplate:
-      "A direct report has missed or joined late to most of the team's daily stand-ups over the last " +
-      "three weeks, and the rest of the team keeps recapping for them. There is a sympathetic reason " +
-      "behind it that they will share if the user asks. The user has set up a short one-on-one.",
-    criteria: [
-      "Named the specific behavior or pattern directly",
-      "Stated the concrete impact of the behavior",
-      "Asked for the direct report's perspective before concluding",
-    ],
-    personaNotes:
-      "Jamie is cooperative and not defensive by default, similar to the rest of this unit, but the " +
-      "guide isn't shown so the user has to remember to hit all three skills unprompted.",
-    demoExchange: UNIT_1_DEMO,
-  },
-
-  // ---------------------------------------------------------------------
-  // Unit 2: Everyday Workplace Friction — mild resistance
-  // ---------------------------------------------------------------------
-  {
-    id: "friction-interruptions",
-    unit: "Unit 2: Everyday Workplace Friction",
-    title: "Addressing a Repeated Interruption Pattern",
-    isCheckpoint: false,
-    difficultyLabel: "mild resistance",
-    character: {
-      name: "Dana",
-      role: "Peer, coworker on an adjacent team",
-      relationship: "Works closely with the user cross-functionally",
-    },
-    scenarioTemplate:
-      "A peer has a habit of interrupting or talking over the user in shared meetings, and it's started " +
-      "to affect how the user is perceived by others in the room. The user needs to raise it directly, " +
-      "one-on-one, without turning it into a conflict.",
-    criteria: [
-      "Named the specific pattern with a concrete example",
-      "Stayed neutral in tone instead of accusatory",
-      "Proposed what they'd like to happen going forward",
-    ],
-    personaNotes:
-      "Dana is initially surprised and a little embarrassed, which can read as mild defensiveness. If " +
-      "the user stays neutral and specific, Dana relaxes and owns it. If the user is accusatory or " +
-      "vague, Dana gets defensive and starts minimizing (\"I don't think it's that big a deal\").",
-    demoExchange: UNIT_2_DEMO,
-  },
-  {
-    id: "friction-missed-handoff",
-    unit: "Unit 2: Everyday Workplace Friction",
-    title: "Pushing Back on a Missed Handoff",
-    isCheckpoint: false,
-    difficultyLabel: "mild resistance",
-    character: {
-      name: "Chris",
-      role: "Peer, coworker on an adjacent team",
-      relationship: "Shares ownership of a recurring deliverable with the user",
-    },
-    scenarioTemplate:
-      "A peer who owns a piece of a shared deliverable has repeatedly been late or incomplete in " +
-      "handing off their part, forcing the user to scramble or redo work close to a deadline. The user " +
-      "needs to raise this directly without escalating it into a bigger conflict.",
-    criteria: [
-      "Named the specific pattern with a concrete example",
-      "Stated the impact on the user's own work",
-      "Proposed what they'd like to happen going forward",
-    ],
-    personaNotes:
-      "Chris is a little defensive at first, tends to explain it away as just being busy, but isn't " +
-      "hostile. Relaxes and gets more collaborative if the user stays specific and unaccusatory, gets " +
-      "more clipped and minimizing if the user leads with frustration.",
-    demoExchange: UNIT_2_DEMO,
-  },
-  {
-    id: "friction-credit-issue",
-    unit: "Unit 2: Everyday Workplace Friction",
-    title: "Raising a Credit Issue",
-    isCheckpoint: false,
-    difficultyLabel: "mild resistance",
-    character: {
-      name: "Jordan",
-      role: "Peer, coworker on the same team",
-      relationship: "Works alongside the user day to day",
-    },
-    scenarioTemplate:
-      "In a recent meeting, a peer presented an idea or piece of analysis that was actually the user's " +
-      "work, without acknowledging it, in front of others including leadership. The user needs to raise " +
-      "this directly with the peer, one-on-one, without it turning into an accusation of dishonesty.",
-    criteria: [
-      "Named the specific incident with a concrete example",
-      "Explained why it matters to them, not just that it happened",
-      "Stayed collaborative rather than accusatory",
-    ],
-    personaNotes:
-      "Jordan gets a bit defensive and surprised at first (\"I wasn't trying to take credit\"), and might " +
-      "initially minimize it as an oversight. Opens up and acknowledges it more genuinely if the user " +
-      "stays calm and specific, gets more clipped and defensive if the user sounds accusatory.",
-    demoExchange: UNIT_2_DEMO,
-  },
-  {
-    id: "friction-passive-aggressive",
-    unit: "Unit 2: Everyday Workplace Friction",
-    title: "Addressing Passive-Aggressive Comments",
-    isCheckpoint: false,
-    difficultyLabel: "mild resistance",
-    character: {
-      name: "Casey",
-      role: "Peer, coworker on an adjacent team",
-      relationship: "Interacts with the user regularly in group settings",
-    },
-    scenarioTemplate:
-      "A peer has made a few subtly pointed or sarcastic comments about the user's work or decisions in " +
-      "group settings over the past couple of weeks, nothing overt enough to call out in the moment, but " +
-      "adding up. The user needs to name the pattern directly, one-on-one, which is trickier since each " +
-      "individual comment could be brushed off as harmless.",
-    criteria: [
-      "Named the specific pattern with concrete examples, not just a feeling",
-      "Explained the impact without being accusatory",
-      "Invited the peer's perspective before concluding",
-    ],
-    personaNotes:
-      "Casey is caught off guard and a bit defensive, likely to claim they didn't mean anything by it or " +
-      "that the user is reading into it. This is the trickiest lesson in this unit: Casey relaxes only " +
-      "if the user is specific and calm rather than vague or emotional, and stays defensive longer than " +
-      "the other Unit 2 lessons if the user is vague.",
-    demoExchange: UNIT_2_DEMO,
-  },
-  {
-    id: "checkpoint-unit-2",
-    unit: "Unit 2: Everyday Workplace Friction",
-    title: "Checkpoint: Workplace Friction",
-    isCheckpoint: true,
-    difficultyLabel: "mild resistance",
-    character: {
-      name: "Reese",
-      role: "Peer, coworker on an adjacent team",
-      relationship: "Works closely with the user cross-functionally",
-    },
-    scenarioTemplate:
-      "A peer on an adjacent team has twice posted decisions affecting the user's team in a shared " +
-      "project channel before raising them with the user, so the user's team found out from the channel. " +
-      "There is a plausible innocent explanation. The user has grabbed time with them.",
-    criteria: [
-      "Named the specific pattern with a concrete example",
-      "Stayed neutral in tone instead of accusatory",
-      "Proposed what they'd like to happen going forward",
-    ],
-    personaNotes:
-      "Reese starts a little surprised and mildly defensive, similar to the rest of this unit, and " +
-      "relaxes if approached calmly and specifically.",
-    demoExchange: UNIT_2_DEMO,
-  },
-
-  // ---------------------------------------------------------------------
-  // Unit 3: Setting Boundaries and Saying No — moderate resistance
-  // ---------------------------------------------------------------------
-  {
-    id: "boundaries-unreasonable-ask",
-    unit: "Unit 3: Setting Boundaries and Saying No",
-    title: "Turning Down an Unreasonable Ask",
-    isCheckpoint: false,
-    difficultyLabel: "moderate resistance",
-    // The ask itself already exists before this conversation starts (Avery
-    // made it) — unlike most lessons, where the NPC must stay neutral so
-    // the user is the one to surface the specifics, here it's realistic
-    // (and doesn't hand away any graded skill) for the opening line to
-    // reference the known, pending ask. See engine.js's generateOpeningLine.
-    npcInitiatesWithKnownRequest: true,
-    character: {
-      name: "Avery",
-      role: "Peer, coworker on an adjacent team",
-      relationship: "Occasionally asks the user for cross-team help",
-    },
-    scenarioTemplate:
-      "A peer has asked the user to take on a significant piece of extra work with an unreasonable " +
-      "turnaround, on top of the user's already full plate. The user needs to say no or negotiate the " +
-      "scope, without just quietly absorbing the ask.",
-    criteria: [
-      "Clearly declined or renegotiated the ask, not just expressed discomfort",
-      "Gave a concrete reason grounded in their actual workload",
-      "Offered or discussed an alternative",
-    ],
-    personaNotes:
-      "Avery pushes back a bit and tries to guilt-trip mildly (\"I was really counting on you\"), and " +
-      "negotiates rather than immediately accepting the no. Backs off and works toward an alternative if " +
-      "the user stays firm but reasonable, keeps pushing if the user hedges or sounds unsure.",
-    demoExchange: UNIT_3_DEMO,
-  },
-  {
-    id: "boundaries-team-time",
-    unit: "Unit 3: Setting Boundaries and Saying No",
-    title: "Protecting Your Team's Time",
-    isCheckpoint: false,
-    difficultyLabel: "moderate resistance",
-    character: {
-      name: "Drew",
-      role: "Peer manager, leads an adjacent team",
-      relationship: "Manages a team that frequently collaborates with the user's team",
-    },
-    scenarioTemplate:
-      "A peer manager keeps pulling one of the user's direct reports into unplanned work without " +
-      "checking with the user first, disrupting the direct report's ability to hit their own priorities. " +
-      "The user needs to set a boundary with the peer manager directly.",
-    criteria: [
-      "Named the specific pattern with a concrete example",
-      "Stated why it's a problem for their team's priorities",
-      "Proposed a clear process for future requests",
-    ],
-    personaNotes:
-      "Drew is a bit surprised and defensive at first, feels like their own priorities are legitimate " +
-      "and gets slightly dismissive of the concern. Comes around to a workable process if the user stays " +
-      "firm and specific instead of just venting, stays dismissive and unresolved if the user is vague.",
-    demoExchange: UNIT_3_DEMO,
-  },
-  {
-    id: "boundaries-repeat-favor",
-    unit: "Unit 3: Setting Boundaries and Saying No",
-    title: "Saying No to a Repeat Favor",
-    isCheckpoint: false,
-    difficultyLabel: "moderate resistance",
-    character: {
-      name: "Skyler",
-      role: "Peer, coworker on the same team",
-      relationship: "Has leaned on the user for help several times before",
-    },
-    scenarioTemplate:
-      "A peer has repeatedly asked the user for help with tasks outside the user's role, and it's become " +
-      "a pattern that's eating into the user's own work. The user needs to say no to the pattern, not " +
-      "just the latest ask, without damaging the relationship.",
-    criteria: [
-      "Named the pattern, not just the one-off request",
-      "Was clear about what they will and won't keep doing",
-      "Acknowledged the relationship while holding the boundary",
-    ],
-    personaNotes:
-      "Skyler is caught off guard and a little hurt or defensive, might imply the user is being " +
-      "unhelpful or that they thought this was fine. Comes around if the user is warm but firm and " +
-      "specific about the pattern, gets more wounded and defensive if the user is only firm without any " +
-      "warmth.",
-    demoExchange: UNIT_3_DEMO,
-  },
-  {
-    id: "boundaries-scope-creep",
-    unit: "Unit 3: Setting Boundaries and Saying No",
-    title: "Pushing Back on Scope Creep from Your Own Manager",
-    isCheckpoint: false,
-    difficultyLabel: "moderate resistance",
-    character: {
-      name: "Diane Foster",
-      role: "The user's own manager",
-      relationship: "Directly manages the user",
-    },
-    scenarioTemplate:
-      "The user's own manager keeps adding requests to a project beyond what was originally scoped and " +
-      "agreed, without adjusting the timeline or taking anything off the user's plate. The user needs to " +
-      "push back and renegotiate scope with their own manager, a harder dynamic given the power " +
-      "difference.",
-    criteria: [
-      "Named the specific scope changes concretely",
-      "Explained the tradeoff or impact of continuing to absorb them",
-      "Proposed a concrete renegotiation, not just a complaint",
-    ],
-    personaNotes:
-      "Diane is a bit dismissive at first, used to the user just absorbing extra asks, and might " +
-      "initially minimize the concern (\"it's not that much more\"). This is the hardest lesson in this " +
-      "unit: Diane only meaningfully engages with a renegotiation if the user is concrete and confident, " +
-      "and stays dismissive if the user is vague or apologetic.",
-    demoExchange: UNIT_3_DEMO,
-  },
-  {
-    id: "checkpoint-unit-3",
-    unit: "Unit 3: Setting Boundaries and Saying No",
-    title: "Checkpoint: Boundaries",
-    isCheckpoint: true,
-    difficultyLabel: "moderate resistance",
-    npcInitiatesWithKnownRequest: true,
-    character: {
-      name: "Quinn",
-      role: "Peer, coworker on an adjacent team",
-      relationship: "Occasionally asks the user for cross-team help",
-    },
-    scenarioTemplate:
-      "A peer has asked the user's team to take on an extra data pull before their launch on Friday. " +
-      "The user's team is already committed through the end of the week and picking it up would put " +
-      "their own deadline at risk. The peer is following up on the request.",
-    criteria: [
-      "Clearly declined or renegotiated the ask",
-      "Gave a concrete reason",
-      "Proposed an alternative or a path forward",
-    ],
-    personaNotes:
-      "Quinn pushes back moderately and tries to negotiate, similar to the rest of this unit, and comes " +
-      "around if the user stays firm and specific.",
-    demoExchange: UNIT_3_DEMO,
-  },
-
-  // ---------------------------------------------------------------------
-  // Unit 4: Hard Conversations — guarded/defensive to emotionally heavy
-  // ---------------------------------------------------------------------
-  {
-    id: "hard-critical-feedback",
-    unit: "Unit 4: Hard Conversations",
-    title: "Giving Critical Feedback",
-    isCheckpoint: false,
-    difficultyLabel: "guarded and defensive",
-    character: {
-      name: "Marcus",
+      name: "Jonah",
       role: "Direct report",
       relationship: "8 months on the team, reports to the user",
     },
     scenarioTemplate:
-      "The user's direct report has been repeatedly missing a specific, measurable commitment (e.g. " +
-      "deadlines, quality bar, meeting prep) over the past few weeks. The user needs to raise it " +
-      "directly in a one-on-one meeting without being harsh, while still landing the seriousness of the " +
-      "pattern.",
+      "The report has missed the SAME commitment twice, each time with a different plausible " +
+      "explanation offered after the fact. LOCKED: the report is capable and the explanations are " +
+      "individually reasonable -- the issue is the pattern and the absent early warning, not " +
+      "competence.",
     criteria: [
-      "Named the specific behavior, not a vague generalization",
-      "Stated the concrete impact of the behavior",
-      "Asked for the direct report's perspective before concluding",
+      "State the repeated pattern using observable facts",
+      "Ask what's preventing the commitment from being met",
+      "Set a specific expectation, support, and follow-up date",
     ],
     personaNotes:
-      "Marcus is guarded and a little defensive by default, more than a typical first-feedback " +
-      "conversation. If the user leads with blunt criticism or vague accusations, he minimizes the " +
-      "pattern or argues about the details rather than owning it. If the user is specific, states real " +
-      "impact, and genuinely asks for his perspective, he gradually drops the defensiveness and opens up " +
-      "about what's actually been going on.",
-    demoExchange: UNIT_4_DEMO,
+      "Jonah defends each instance separately and objects to them being grouped. Concedes the real " +
+      "common factor only if the user holds the pattern together instead of relitigating each excuse.",
+    demoExchange: DEMOS.guarded,
   },
   {
-    id: "hard-team-pattern",
-    unit: "Unit 4: Hard Conversations",
-    title: "Addressing a Pattern Affecting the Team",
+    id: "feedback-pushback",
+    unit: "Unit 2: Giving Feedback",
+    title: "Feedback That Gets Pushed Back On",
     isCheckpoint: false,
-    difficultyLabel: "guarded and defensive",
-    character: {
-      name: "Devon",
-      role: "Direct report",
-      relationship: "1 year on the team, reports to the user",
-    },
-    scenarioTemplate:
-      "The user's direct report has a behavior pattern (e.g. dismissive comments in team meetings, not " +
-      "following through on cross-team commitments) that is starting to affect how teammates work with " +
-      "them, and other team members have quietly raised it with the user. The user needs to address it " +
-      "directly, which is harder because it's about how they're perceived, not just a missed task.",
-    criteria: [
-      "Named the specific behavior with concrete examples",
-      "Stated the impact on the team, not just the user's own opinion",
-      "Asked for the direct report's perspective before concluding",
-    ],
-    personaNotes:
-      "Devon is defensive and deflects more than a typical direct report, tends to question whether " +
-      "this is really a widespread issue or just one person's opinion, and might get a little combative " +
-      "about being talked about behind their back. Only softens if the user stays calm, specific, and " +
-      "clearly grounded in concrete examples rather than vague team sentiment.",
-    demoExchange: UNIT_4_DEMO,
-  },
-  {
-    id: "hard-promotion-denial",
-    unit: "Unit 4: Hard Conversations",
-    title: "Denying a Promotion or Raise Request",
-    isCheckpoint: false,
-    difficultyLabel: "guarded and defensive",
-    character: {
-      name: "Elena",
-      role: "Direct report",
-      relationship: "1.5 years on the team, reports to the user",
-    },
-    scenarioTemplate:
-      "The user's direct report has asked for a promotion or raise that the user is not able to grant " +
-      "right now, for reasons outside the direct report's control (e.g. budget, timing, level " +
-      "requirements). The user needs to deliver this news clearly and honestly, while being genuine " +
-      "about what would need to change or when it could be revisited.",
-    criteria: [
-      "Stated the decision clearly, without being vague or overly hedging",
-      "Was honest about the actual reasons, without over-promising",
-      "Gave a concrete path forward or timeline for revisiting it",
-    ],
-    personaNotes:
-      "Elena reacts with real disappointment and some frustration, might push back and question the " +
-      "reasoning or compare herself to a teammate. Doesn't get hostile, but stays frustrated and " +
-      "unconvinced unless the user is honest and concrete about the reasons and the path forward, rather " +
-      "than vague reassurance.",
-    demoExchange: UNIT_4_DEMO,
-  },
-  {
-    id: "hard-layoff",
-    unit: "Unit 4: Hard Conversations",
-    title: "Delivering Hard News",
-    isCheckpoint: false,
-    difficultyLabel: "emotionally heavy",
-    character: {
-      name: "Priya",
-      role: "Direct report",
-      relationship: "2 years on the team, reports to the user",
-    },
-    scenarioTemplate:
-      "The user must tell a direct report that their role is being eliminated due to a reorg, effective " +
-      "on a specific near-term date. The user needs to deliver this clearly and with empathy, without " +
-      "burying the news or over-promising things outside their control.",
-    criteria: [
-      "Stated the decision clearly and directly, without burying it",
-      "Acknowledged the emotional impact without being dismissive",
-      "Was honest about what is and isn't within the user's control",
-      "Gave a clear next step (severance, timeline, resources)",
-    ],
-    personaNotes:
-      "Priya reacts with shock and hurt, the heaviest emotional reaction in this unit. If the news is " +
-      "delivered vaguely or the user hedges, she gets more anxious and starts pressing with anxious " +
-      "follow-up questions. If delivered clearly and with empathy, she moves toward practical questions " +
-      "about next steps instead of spiraling.",
-    demoExchange: UNIT_4_DEMO,
-  },
-  {
-    id: "checkpoint-unit-4",
-    unit: "Unit 4: Hard Conversations",
-    title: "Checkpoint: Hard Conversations",
-    isCheckpoint: true,
-    difficultyLabel: "guarded and defensive",
+    difficultyLabel: "resistant",
     character: {
       name: "Alex",
       role: "Direct report",
       relationship: "1 year on the team, reports to the user",
     },
     scenarioTemplate:
-      "A direct report's work has slipped over the past two months -- missed review deadlines, and two " +
-      "releases that shipped with errors the team caught late. The report has mentioned a difficult " +
-      "situation at home. The user has set up a one-on-one.",
+      "The user raises an issue and the report actively disputes it -- the facts, the impact, or the " +
+      "expectation. LOCKED: part of the report's pushback is genuinely valid and should be conceded; " +
+      "the underlying expectation still stands and must survive the conversation.",
     criteria: [
-      "Named the specific behavior or pattern directly",
-      "Stated the impact on the team or work",
-      "Acknowledged the direct report's situation without excusing the pattern",
-      "Ended with a clear, mutually understood next step",
+      "Ask what specifically they dispute: the facts, impact, or expectation",
+      "Acknowledge valid context without abandoning the issue",
+      "State what expectation or next step remains, including what evidence would change your view",
     ],
     personaNotes:
-      "Alex is guarded at first because they know something is off. Reacts well to directness paired " +
-      "with empathy, but shuts down or gets clipped if the user is either too harsh or too vague and " +
-      "avoidant.",
-    demoExchange: UNIT_4_DEMO,
+      "Alex is firm and specific rather than emotional, and has a real process grievance underneath. " +
+      "Escalates if simply repeated at; settles if the valid part is named and the expectation still " +
+      "held.",
+    demoExchange: DEMOS.resistant,
+  },
+  {
+    id: "checkpoint-unit-2",
+    unit: "Unit 2: Giving Feedback",
+    title: "Checkpoint: Feedback Under Fire",
+    isCheckpoint: true,
+    difficultyLabel: "resistant",
+    character: {
+      name: "Reese",
+      role: "Direct report",
+      relationship: "1 year on the team, reports to the user",
+    },
+    scenarioTemplate:
+      "COMBINES accountability and active resistance: a report with an established, documented pattern " +
+      "of missed commitments disputes that a pattern exists at all when confronted. LOCKED: the pattern " +
+      "is real and documented, and the report will attribute each instance to an external cause.",
+    criteria: [
+      "Hold the documented pattern rather than arguing each instance",
+      "Address the pushback without retreating from the expectation",
+      "Land a specific expectation with a follow-up date",
+    ],
+    personaNotes:
+      "Reese is composed and argumentative, contesting the framing rather than the dates. Keeps pulling " +
+      "the conversation back to individual instances; concedes only if the user refuses to relitigate " +
+      "them.",
+    demoExchange: DEMOS.resistant,
+  },
+  // ---------------------------------------------------------------------
+  // Unit 3: Boundaries & Difficult Asks
+  // ---------------------------------------------------------------------
+  {
+    id: "boundaries-turn-down-request",
+    unit: "Unit 3: Boundaries & Difficult Asks",
+    title: "Turning Down a Report's Request",
+    isCheckpoint: false,
+    difficultyLabel: "guarded",
+    character: {
+      name: "Cass",
+      role: "Direct report",
+      relationship: "2 years on the team, reports to the user",
+    },
+    scenarioTemplate:
+      "The report asks for a stretch opportunity the user genuinely cannot give them. LOCKED: the " +
+      "answer is a final no, and NO equivalent substitute or consolation opportunity exists. Do not let " +
+      "the user resolve this by offering an alternative project.",
+    criteria: [
+      "Give the decision clearly",
+      "Explain the relevant criterion or constraint without hiding behind policy",
+      "Acknowledge the impact, and discuss a next step only if a truthful one exists",
+    ],
+    personaNotes:
+      "Cass is disappointed and direct, and asks for the real reason. Reacts badly to vague process " +
+      "answers or to an invented consolation prize; respects a straight answer even though it stings.",
+    demoExchange: DEMOS.guarded,
+  },
+  {
+    id: "boundaries-protect-team-time",
+    unit: "Unit 3: Boundaries & Difficult Asks",
+    title: "Protecting Your Team's Time",
+    isCheckpoint: false,
+    difficultyLabel: "assertive",
+    character: {
+      name: "Martin",
+      role: "Peer manager",
+      relationship: "Runs an adjacent team; does not report to the user",
+    },
+    scenarioTemplate:
+      "A peer manager repeatedly pulls the user's people into unplanned work directly, bypassing any " +
+      "intake. LOCKED: the peer is not malicious, just efficient for himself, and an alternative " +
+      "process is genuinely available -- this one ends in a rule, not a refusal.",
+    criteria: [
+      "Name the pattern you're seeing",
+      "State the impact on your team",
+      "Propose an intake process for future asks",
+    ],
+    personaNotes:
+      "Martin is friendly and slightly oblivious, and genuinely underestimates the cumulative cost. " +
+      "Bargains about turnaround time before agreeing, and will agree if the process is workable for " +
+      "him.",
+    demoExchange: DEMOS.assertive,
+  },
+  {
+    id: "boundaries-boss-deadline",
+    unit: "Unit 3: Boundaries & Difficult Asks",
+    title: "Saying No to Your Boss's Deadline",
+    isCheckpoint: false,
+    difficultyLabel: "assertive",
+    character: {
+      name: "Diane",
+      role: "The user's manager",
+      relationship: "The user's direct manager; the deadline may not be hers to move",
+    },
+    scenarioTemplate:
+      "The user's manager has committed the team to a date that cannot be met at the current scope. " +
+      "LOCKED: the DATE is effectively fixed; what is negotiable is scope, quality or capacity. The " +
+      "user must force an explicit trade-off rather than obtain more time.",
+    criteria: [
+      "State the constraint factually",
+      "Force an explicit trade-off: scope, quality, or capacity",
+      "Confirm which trade-off they're accepting",
+    ],
+    personaNotes:
+      "Diane is brisk and impatient and initially treats the date as settled. Engages seriously with a " +
+      "concrete capacity argument; dismisses generalized complaints about being busy.",
+    demoExchange: DEMOS.assertive,
+  },
+  {
+    id: "boundaries-former-peer",
+    unit: "Unit 3: Boundaries & Difficult Asks",
+    title: "Setting a Boundary With a Former Peer",
+    isCheckpoint: false,
+    difficultyLabel: "guarded",
+    character: {
+      name: "Joel",
+      role: "Direct report",
+      relationship: "Was the user's peer for 3 years; has reported to them for 2 months",
+    },
+    scenarioTemplate:
+      "A former peer, now a report, expects private access, advance information, or exceptions on the " +
+      "basis of the old friendship. LOCKED: the friendship is genuine and the request is not " +
+      "unreasonable between peers -- it is only unreasonable now, which is what makes it hard.",
+    criteria: [
+      "Acknowledge that the relationship has changed",
+      "Name the boundary and why consistency matters",
+      "Explain what support or connection can continue",
+    ],
+    personaNotes:
+      "Joel is hurt and a little indignant, and invokes the history explicitly. Responds to consistency " +
+      "framed as what the user would owe anyone; reacts badly to rules quoted at him.",
+    demoExchange: DEMOS.guarded,
+  },
+  {
+    id: "checkpoint-unit-3",
+    unit: "Unit 3: Boundaries & Difficult Asks",
+    title: "Checkpoint: Holding the Line Under Pressure",
+    isCheckpoint: true,
+    difficultyLabel: "resistant",
+    character: {
+      name: "Devon",
+      role: "Direct report",
+      relationship: "Was the user's peer for 4 years; has reported to them for 3 months",
+    },
+    scenarioTemplate:
+      "COMBINES a final no with relationship leverage: a former peer, now a report, asks for a stretch " +
+      "role the user cannot give, and pushes back on the refusal by invoking their long shared history. " +
+      "LOCKED: no substitute opportunity exists, and the history is real.",
+    criteria: [
+      "Deliver a final no without inventing a consolation prize",
+      "Hold the decision when the old relationship is used as leverage",
+      "Acknowledge the impact honestly",
+    ],
+    personaNotes:
+      "Devon alternates between professional argument and personal appeal. Accepts a straight answer; " +
+      "presses hard on any hedging, and treats process language as evasion.",
+    demoExchange: DEMOS.resistant,
+  },
+  // ---------------------------------------------------------------------
+  // Unit 4: Managing Up & Across
+  // ---------------------------------------------------------------------
+  {
+    id: "managing-up-resources",
+    unit: "Unit 4: Managing Up & Across",
+    title: "Asking for Resources or Headcount",
+    isCheckpoint: false,
+    difficultyLabel: "assertive",
+    character: {
+      name: "Diane",
+      role: "The user's manager",
+      relationship: "The user's direct manager; controls the budget",
+    },
+    scenarioTemplate:
+      "The user needs additional headcount or budget from their manager. LOCKED: the full ask will NOT " +
+      "be approved as stated -- a partial or alternative resource is the best available outcome, so the " +
+      "user must make the cost of refusal concrete and bring a fallback.",
+    criteria: [
+      "State the specific ask and the need behind it",
+      "Show the cost of not getting it",
+      "Propose a fallback if the full ask isn't approved",
+    ],
+    personaNotes:
+      "Diane is skeptical but fair and asks what makes this different from every other team. Moves only " +
+      "on specific numbers and named risks, never on effort or general pressure.",
+    demoExchange: DEMOS.assertive,
+  },
+  {
+    id: "managing-up-peer-disagreement",
+    unit: "Unit 4: Managing Up & Across",
+    title: "Disagreeing With a Peer Manager in a Meeting",
+    isCheckpoint: false,
+    difficultyLabel: "assertive",
+    character: {
+      name: "Karim",
+      role: "Peer manager",
+      relationship: "Runs an adjacent team; presenting to a room the user is also in",
+    },
+    scenarioTemplate:
+      "GROUP SETTING: a peer manager is presenting a plan that will damage the user's team, with " +
+      "several other people including senior staff present. LOCKED: staying silent means approval, and " +
+      "the disagreement is substantive rather than personal.",
+    criteria: [
+      "Name the specific disagreement, not the person",
+      "State your reasoning briefly",
+      "Propose an alternative or a way to decide",
+    ],
+    personaNotes:
+      "Karim is confident and mildly territorial in front of the room, but not unreasonable. Concedes a " +
+      "specific technical point he genuinely had not considered; digs in if the disagreement sounds " +
+      "personal.",
+    demoExchange: DEMOS.assertive,
+  },
+  {
+    id: "managing-up-defend-work",
+    unit: "Unit 4: Managing Up & Across",
+    title: "Defending Your Team's Work Under Challenge",
+    isCheckpoint: false,
+    difficultyLabel: "resistant",
+    character: {
+      name: "Ellis",
+      role: "Leadership",
+      relationship: "Senior leader in a review with others present",
+    },
+    scenarioTemplate:
+      "GROUP SETTING: leadership challenges the user's team's results and floats cutting the work. " +
+      "LOCKED: there IS a genuine shortfall the user must acknowledge, and a material piece of context " +
+      "leadership does not have. The user must own the first without blaming their team.",
+    criteria: [
+      "State the business outcome and your team's contribution",
+      "Respond to the challenge directly, acknowledging any real shortfall without blaming the team",
+      "State the decision, resource, or protection you need from leadership",
+    ],
+    personaNotes:
+      "Ellis is skeptical, numbers-driven and interrupts vagueness. Respects a direct acknowledgment of " +
+      "a miss; loses patience with defensiveness and with blame aimed downward.",
+    demoExchange: DEMOS.resistant,
+  },
+  {
+    id: "managing-up-own-miss",
+    unit: "Unit 4: Managing Up & Across",
+    title: "Owning a Team Miss With Leadership",
+    isCheckpoint: false,
+    difficultyLabel: "resistant",
+    character: {
+      name: "Ellis",
+      role: "Leadership",
+      relationship: "Senior leader; frustrated about a missed commitment",
+    },
+    scenarioTemplate:
+      "Leadership is questioning a team failure that was caused by one person on the user's team. " +
+      "LOCKED: leadership will explicitly ask who was responsible, and naming the individual is the " +
+      "wrong move -- the user must absorb it while still asking for what the recovery needs.",
+    criteria: [
+      "State what happened and take ownership without scapegoating the report",
+      "Explain the recovery plan",
+      "Make a realistic, specific ask",
+    ],
+    personaNotes:
+      "Ellis is frustrated and presses at least twice for a name. Accepts ownership when it is taken " +
+      "plainly, but has little patience for extended apology and will ask for the plan.",
+    demoExchange: DEMOS.resistant,
+  },
+  {
+    id: "checkpoint-unit-4",
+    unit: "Unit 4: Managing Up & Across",
+    title: "Checkpoint: Advocating Under Scrutiny",
+    isCheckpoint: true,
+    difficultyLabel: "resistant",
+    character: {
+      name: "Karim",
+      role: "Peer manager",
+      relationship: "Adjacent team lead, challenging the user with leadership present",
+    },
+    scenarioTemplate:
+      "COMBINES a peer disagreement and a defence of the team's work in one room: a peer manager argues " +
+      "the user's approach caused weak results and proposes absorbing the work, while leadership " +
+      "listens and has its own doubts. LOCKED: both threads must be handled; dropping either is the " +
+      "failure mode.",
+    criteria: [
+      "Disagree with the peer's claim without making it personal",
+      "Defend the team's outcome to leadership, owning any real shortfall",
+      "Land a decision or ask rather than leaving it open",
+    ],
+    personaNotes:
+      "Karim is pointed but plausible and concedes a specific factual point when pressed. Leadership's " +
+      "doubt runs underneath and resurfaces if the user only fights the peer.",
+    demoExchange: DEMOS.resistant,
+  },
+  // ---------------------------------------------------------------------
+  // Unit 5: Hard Conversations
+  // ---------------------------------------------------------------------
+  {
+    id: "hard-job-offer",
+    unit: "Unit 5: Hard Conversations",
+    title: "Delivering a Job Offer and Negotiating Terms",
+    isCheckpoint: false,
+    difficultyLabel: "assertive",
+    character: {
+      name: "Imani",
+      role: "Candidate",
+      relationship: "Final-round candidate weighing a competing offer",
+    },
+    scenarioTemplate:
+      "EXTERNAL CANDIDATE: the user extends an offer to a candidate holding a higher competing offer. " +
+      "LOCKED: base compensation is FIXED and cannot be matched; scope, title and start date are " +
+      "genuinely flexible. Over-promising is a worse outcome than losing the candidate.",
+    criteria: [
+      "Present the offer clearly and state what's flexible vs. fixed",
+      "Listen to their counter and probe what matters most to them",
+      "Close with a specific next step or deadline",
+    ],
+    personaNotes:
+      "Imani is warm, professional and candid about the competing offer. Cares more about scope and " +
+      "ownership than the headline number, but will only reveal that if asked.",
+    demoExchange: DEMOS.assertive,
+  },
+  {
+    id: "hard-candidate-rejection",
+    unit: "Unit 5: Hard Conversations",
+    title: "Telling a Candidate They Didn't Get the Job",
+    isCheckpoint: false,
+    difficultyLabel: "guarded",
+    character: {
+      name: "Peter",
+      role: "Candidate",
+      relationship: "Final-round candidate; a genuine contender",
+    },
+    scenarioTemplate:
+      "EXTERNAL CANDIDATE: the user tells a strong final-round candidate they did not get the role. " +
+      "LOCKED: the decision is final, there is no future role to dangle, and no ongoing relationship " +
+      "follows. The candidate will ask for a real reason.",
+    criteria: [
+      "State the decision clearly and promptly",
+      "Give one genuine, specific reason without over-explaining",
+      "Leave the door open only if it's genuinely true",
+    ],
+    personaNotes:
+      "Peter is gracious but visibly disappointed and asks what it came down to. Values directness; " +
+      "reads a long preamble or a vague reason as evasion.",
+    demoExchange: DEMOS.guarded,
+  },
+  {
+    id: "hard-performance-conversation",
+    unit: "Unit 5: Hard Conversations",
+    title: "A Formal Performance Conversation",
+    isCheckpoint: false,
+    difficultyLabel: "guarded",
+    character: {
+      name: "Jonah",
+      role: "Direct report",
+      relationship: "Documented pattern; informal feedback has already been tried",
+    },
+    scenarioTemplate:
+      "FORMAL: informal feedback has already failed and this is the documented performance " +
+      "conversation, with a stated consequence and timeline. LOCKED: the outcome is not a discussion " +
+      "about whether the pattern exists -- it is the formalization of a consequence.",
+    criteria: [
+      "State the pattern and its documented history",
+      "Name the concrete consequence and timeline",
+      "Set explicit, measurable expectations going forward",
+    ],
+    personaNotes:
+      "Jonah is resigned and slightly bitter, and has heard the feedback before. Wants precision about " +
+      "what counts as success; reacts badly to the formality being softened into a casual chat.",
+    demoExchange: DEMOS.guarded,
+  },
+  {
+    id: "hard-mediation",
+    unit: "Unit 5: Hard Conversations",
+    title: "Mediating Conflict Between Two Reports",
+    isCheckpoint: false,
+    difficultyLabel: "resistant",
+    character: {
+      name: "Ines & Marco",
+      role: "Two reports",
+      relationship: "Both report to the user; both present in the room",
+    },
+    scenarioTemplate:
+      "THREE-PARTY: two of the user's reports are in open conflict and BOTH are present. LOCKED: the " +
+      "user is the mediator, not the judge -- the goal is to run the conversation, not to rule on who " +
+      "is right. Both characters speak; label each line with the speaker's name.",
+    criteria: [
+      "Set ground rules for the conversation",
+      "Let each person state their view uninterrupted",
+      "Name the shared goal and propose a path forward",
+    ],
+    personaNotes:
+      "Ines and Marco interrupt each other early and test whether the user will enforce any rules. If " +
+      "the user holds the structure, their two accounts turn out to describe the same underlying " +
+      "breakdown.",
+    demoExchange: DEMOS.resistant,
+  },
+  {
+    id: "hard-termination",
+    unit: "Unit 5: Hard Conversations",
+    title: "Letting Someone Go",
+    isCheckpoint: false,
+    difficultyLabel: "guarded",
+    character: {
+      name: "Cass",
+      role: "Direct report",
+      relationship: "2 years on the team; this is their final conversation with the user",
+    },
+    scenarioTemplate:
+      "TERMINATION: the decision is made, final and not reversible, and the working relationship ends " +
+      "after this conversation. LOCKED: nothing the report says can change the outcome, and the user " +
+      "must not imply otherwise or re-open the reasoning.",
+    criteria: [
+      "State the decision plainly, early in the conversation",
+      "Explain the reasoning briefly, without over-justifying",
+      "Address next steps and support available",
+    ],
+    personaNotes:
+      "Cass is shocked, then quickly practical. Asks briefly whether anything could have changed it, " +
+      "then moves to logistics. Long justification after the decision makes it worse, not better.",
+    demoExchange: DEMOS.guarded,
+  },
+  {
+    id: "checkpoint-unit-5",
+    unit: "Unit 5: Hard Conversations",
+    title: "Checkpoint: The Full Arc",
+    isCheckpoint: true,
+    difficultyLabel: "resistant",
+    character: {
+      name: "Reese",
+      role: "Direct report",
+      relationship: "At the end of a documented performance process",
+    },
+    scenarioTemplate:
+      "COMBINES a formal performance conversation with a possible termination in the SAME session: " +
+      "depending on how the user handles it, the conversation can turn into ending the employment. " +
+      "LOCKED: both outcomes are genuinely live at the start, and the turn happens mid-conversation.",
+    criteria: [
+      "State the documented pattern and the consequence plainly",
+      "Carry accountability through if the conversation turns",
+      "Leave the person with concrete next steps either way",
+    ],
+    personaNotes:
+      "Reese opens by raising an outside option, which shifts the footing immediately. Wants to know " +
+      "exactly where they stand before deciding anything, and notices any wavering.",
+    demoExchange: DEMOS.resistant,
   },
 ];
 

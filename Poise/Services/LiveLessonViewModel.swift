@@ -267,7 +267,7 @@ final class LiveLessonViewModel: ObservableObject {
 
     // MARK: - Mock content (UI testing only, see useMockDataForUITesting)
 
-    // Looked up by lessonId so every one of the 20 lessons gets its own
+    // Looked up by lessonId so every lesson gets its own
     // mocked content instead of all sharing this one Sam/Meridian scenario --
     // falls back to it only if `lessonId` doesn't match any known lesson,
     // which shouldn't normally happen.

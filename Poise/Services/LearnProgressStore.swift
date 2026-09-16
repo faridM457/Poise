@@ -3,7 +3,7 @@ import Foundation
 
 // Single shared source of truth for the things that used to be hardcoded
 // literals scattered across LearnView/ProgressDashboardView/ProfileView:
-// streak, energy, and which of the 20 lessons are completed/available/locked.
+// streak, energy, and which lessons are completed.
 // In-memory + UserDefaults only (no backend) -- this is a prototype's
 // progress tracking, not a real account system.
 @MainActor
@@ -343,7 +343,7 @@ final class LearnProgressStore: ObservableObject {
         return nil
     }
 
-    // All 4 units, each with its 5 lessons in curriculum order, states
+    // All units with their lessons in curriculum order, states
     // computed fresh from completedLessonIDs on every access.
     var units: [LessonUnit] {
         let grouped = Dictionary(grouping: PoiseLessonLibrary.all, by: \.unitNumber)
@@ -484,7 +484,7 @@ extension LearnProgressStore {
             return !sessions.isEmpty
         case "full-circle":
             return completed.count >= PoiseLessonLibrary.all.count
-        case "unit-1", "unit-2", "unit-3", "unit-4":
+        case "unit-1", "unit-2", "unit-3", "unit-4", "unit-5":
             guard let unit = Int(badge.id.dropFirst("unit-".count)) else { return false }
             let lessons = PoiseLessonLibrary.all.filter { $0.unitNumber == unit }
             return !lessons.isEmpty && lessons.allSatisfy { completed.contains($0.id) }

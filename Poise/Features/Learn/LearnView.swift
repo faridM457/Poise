@@ -13,7 +13,7 @@ import UIKit
 //     which is the page's only tinted block.
 //  3. Color carries MEANING, not decoration -- per-unit accents appear only
 //     in a small icon badge and that unit's progress fill. Card backgrounds
-//     stay neutral so four units don't read as four different components.
+//     stay neutral so the units don't read as different components.
 //
 // Nothing on this page is ever locked (see LearnProgressStore.state(for:)):
 // units are a menu, not a ladder, so every state here is either "not started
@@ -121,7 +121,9 @@ struct LearnView: View {
     }
 
     private func accentColor(for index: Int) -> Color {
-        let palette: [Color] = [.poiseMintDark, .poisePurple, .poiseOrange, .poiseBlueDark]
+        // Five units, five accents -- with four the fifth unit wrapped back
+        // to Unit 1's colour and the grid read as a repeat.
+        let palette: [Color] = [.poiseMintDark, .poisePurple, .poiseOrange, .poiseBlueDark, .poiseGold]
         return palette[index % palette.count]
     }
 }
@@ -585,14 +587,16 @@ private struct UnitGridCard: View {
                 // (the grid equalizes heights WITHIN a row, not between rows).
                 // At 14pt it needs ~130pt, leaving real margin. One line
                 // everywhere means all four cards match with no reserved
-                // whitespace. minimumScaleFactor is a safety net for any
-                // future unit name longer than these four -- it shrinks rather
-                // than truncating, and never fires for the current set.
+                // Two lines, not one. The single-line version promised to
+                // shrink rather than truncate and then did truncate --
+                // "Foundations & Expecta..." -- once the curriculum moved to
+                // names longer than the original four. Wrapping is the honest
+                // fix; minimumScaleFactor still catches anything longer again.
                 Text(UnitLabelFormatter.topic(unit))
                     .font(PoiseType.subhead(.bold))
                     .foregroundStyle(Color.poiseNavy)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
 
                 Spacer(minLength: 12)
