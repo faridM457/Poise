@@ -33,7 +33,6 @@ struct LearnView: View {
     // Set when the user taps the continue button at 0 energy -- surfaces a
     // dismissable warning (testing purposes only, never a hard gate; see
     // LearnProgressStore.markCompleted) rather than blocking the tap.
-    @State private var lowEnergyLesson: LessonNode?
 
     private var units: [LessonUnit] { store.units }
 
@@ -41,10 +40,10 @@ struct LearnView: View {
         ScrollView(showsIndicators: false) {
             pageContent
                 .padding(.horizontal, 20)
-                .padding(.top, 10)
+                .padding(.top, 20)
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            PoiseTopBar(streak: store.streak, energyText: store.energyDisplayText)
+            PoiseTopBar(streak: store.currentStreak, energyText: store.energyDisplayText)
         }
         // Painted as a background rather than a ZStack sibling: a sibling with
         // .ignoresSafeArea() expands the ZStack's bounds, and the ScrollView
@@ -64,26 +63,8 @@ struct LearnView: View {
         .poiseLessonCover(item: $activeLesson) { lesson in
             LessonFlowView(lesson: lesson) { completed in
                 activeLesson = nil
-                if completed { store.markCompleted(lesson.id) }
+                _ = completed
             }
-        }
-        .alert(
-            "You're out of energy",
-            isPresented: Binding(
-                get: { lowEnergyLesson != nil },
-                set: { if !$0 { lowEnergyLesson = nil } }
-            ),
-            presenting: lowEnergyLesson
-        ) { lesson in
-            Button("Start anyway") {
-                activeLesson = lesson
-                lowEnergyLesson = nil
-            }
-            Button("Cancel", role: .cancel) {
-                lowEnergyLesson = nil
-            }
-        } message: { _ in
-            Text("You don't have any energy left, but you can still practice this lesson.")
         }
     }
 
@@ -91,14 +72,14 @@ struct LearnView: View {
     // the Swift type checker gave up on it ("failed to produce diagnostic").
     private var pageContent: some View {
         VStack(alignment: .leading, spacing: 26) {
-            GreetingHeader(name: PoiseMockData.profile.name, snapshot: PoiseMockData.progress)
+            GreetingHeader(remainingThisWeek: store.remainingThisWeek)
 
             UpNextCard(upNext: store.upNext, onStart: attemptStart)
 
             PoiseSection(title: "Explore units") { unitGrid }
 
             PoiseSection(title: "This week") {
-                WeeklyActivityCard(snapshot: PoiseMockData.progress)
+                WeeklyActivityCard(week: store.weekEndingToday, completed: store.conversationsThisWeek, goal: LearnProgressStore.weeklyGoal)
             }
 
             // Small tail of breathing room. The tab bar is a bottom
@@ -129,15 +110,14 @@ struct LearnView: View {
         attemptStart(lesson)
     }
 
-    // No state check: every lesson is startable, including replaying one
-    // that's already completed (markCompleted is idempotent, so a replay
-    // neither double-counts progress nor spends energy twice).
+    // Opening a lesson is free -- the briefing and the guide cost nothing to
+    // read. The energy check lives on the start button inside the flow (see
+    // LiveLessonFlowView.startRoleplay), which is the moment a conversation
+    // is actually generated. This used to block here and offer a "Start
+    // anyway" escape, which spent nothing and produced a run the scorecard
+    // then had to describe as free.
     private func attemptStart(_ lesson: LessonNode) {
-        if store.energyRemaining <= 0 {
-            lowEnergyLesson = lesson
-        } else {
-            activeLesson = lesson
-        }
+        activeLesson = lesson
     }
 
     private func accentColor(for index: Int) -> Color {
@@ -166,8 +146,12 @@ private extension View {
 // literal emoji characters in this app; SF Symbols elsewhere are fine,
 // this is specifically about the greeting text).
 private struct GreetingHeader: View {
-    let name: String
-    let snapshot: ProgressSnapshot
+    let remainingThisWeek: Int
+
+    // Observed, not read once: the name is editable on the Profile tab and
+    // the greeting has to follow it. Reading UserProfileStore.shared.name
+    // inline left this frozen at whatever it was when the view first built.
+    @ObservedObject private var profile = UserProfileStore.shared
 
     private var timeOfDayGreeting: String {
         let hour = Calendar.current.component(.hour, from: Date())
@@ -179,14 +163,14 @@ private struct GreetingHeader: View {
     }
 
     private var weeklyNudge: String {
-        let left = snapshot.remainingThisWeek
+        let left = remainingThisWeek
         guard left > 0 else { return "You've hit this week's goal." }
         return "\(left) more conversation\(left == 1 ? "" : "s") to hit this week's goal."
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("\(timeOfDayGreeting), \(name)")
+            Text("\(timeOfDayGreeting), \(profile.displayName)")
                 .font(PoiseType.title())
                 .foregroundStyle(Color.poiseNavy)
             // Was "One conversation at a time." -- the only line on the page
@@ -194,7 +178,7 @@ private struct GreetingHeader: View {
             // than what's done: the weekly card at the foot of the page
             // already reports the count and the day-by-day shape, so a second
             // "4 of 5" here would restate it. Both read from the same
-            // ProgressSnapshot week, so they can't disagree.
+            // LearnProgressStore week, so they can't disagree.
             Text(weeklyNudge)
                 .font(PoiseType.subhead())
                 .foregroundStyle(Color.poiseMuted)
@@ -218,7 +202,10 @@ private struct UpNextCard: View {
     let upNext: (unit: LessonUnit, lesson: LessonNode, lessonNumber: Int)?
     let onStart: (LessonNode) -> Void
 
-    private static let photoWidth: CGFloat = 126
+    // Narrowed from 126pt. At that width the text column was 200pt and
+    // "Repeated Interruptions" measured 194.3pt -- 5.7pt of headroom, so any
+    // longer lesson name wrapped. 110pt gives the column 216pt.
+    private static let photoWidth: CGFloat = 110
     // A floor, not a fixed height. At 184 fixed, a one-line headline left a
     // 32.7pt void between the detail line and the button -- the same reserved
     // whitespace removed from the unit cards, and the largest unstructured
@@ -295,15 +282,21 @@ private struct UpNextCard: View {
 
             if let upNext {
                 Button(action: { onStart(upNext.lesson) }) {
+                    // Label one rung down (14pt, not 16) so it stops
+                    // competing with the 18pt lesson title two lines above --
+                    // they were 2pt apart and the button, being the darkest
+                    // object in the card, was winning the first read. The box
+                    // gets taller rather than smaller: at 40.7pt it was under
+                    // the 44pt minimum tap target.
                     HStack(spacing: 7) {
                         Text("Start")
-                            .font(PoiseType.body(.bold))
+                            .font(PoiseType.subhead(.bold))
                         Image(systemName: "arrow.right")
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.system(size: 12, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 18)
-                    .padding(.vertical, 12)
+                    .frame(minHeight: 44)
                     .background(Color.poiseBlueDark)
                     .clipShape(Capsule())
                 }
@@ -357,6 +350,11 @@ private struct HeroCharacterPanel: View {
 
 // How long a lesson takes, shown wherever one can be started. The number is
 // derived from the lesson's turn count (see MockLessonContent), not hand-set.
+//
+// Energy cost deliberately does NOT appear here. It lives only on the button
+// that starts the conversation (see StartLabel) -- everywhere before that the
+// user is still browsing, and a price tag on every row made the app read as
+// metered.
 private struct DurationLabel: View {
     let minutes: Int
 
@@ -557,8 +555,15 @@ private struct UnitGridCard: View {
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .top) {
-                    PoiseIconBadge(icon: unit.lessons.first?.icon ?? "book.fill", color: accent)
+                // Icon, unit number and chevron share one row rather than the
+                // icon getting a line to itself. The topic title can't join
+                // them -- beside a 34pt badge it would have 89pt to work in
+                // and "Hard Conversations" needs 132.7pt, so it would wrap
+                // again -- but pairing the badge with the "UNIT 1" label
+                // still takes a whole row out of every card.
+                HStack(spacing: 10) {
+                    PoiseIconBadge(icon: unit.lessons.first?.icon ?? "book.fill", color: accent, size: 34)
+                    PoiseEyebrow(text: UnitLabelFormatter.eyebrow(unit))
                     Spacer(minLength: 4)
                     // Always the chevron: this slot is the affordance, and
                     // every card opens. Completion belongs down in the
@@ -571,11 +576,7 @@ private struct UnitGridCard: View {
                         .foregroundStyle(Color.poiseMuted)
                 }
 
-                Spacer().frame(height: 12)
-
-                PoiseEyebrow(text: UnitLabelFormatter.eyebrow(unit))
-
-                Spacer().frame(height: 3)
+                Spacer().frame(height: 10)
 
                 // One rung down the ladder (14pt, not 16) so every unit name
                 // fits on a single line: at 16pt "Hard Conversations" measured
@@ -650,17 +651,14 @@ private struct SegmentedProgressBar: View {
 // single summary number -- seven marks make the week's shape legible at a
 // glance and give the page a quiet visual anchor at the bottom.
 private struct WeeklyActivityCard: View {
-    let snapshot: ProgressSnapshot
-
-    // Both of these live on ProgressSnapshot now -- the greeting at the top of
-    // the page quotes the same numbers.
-    private var week: [PracticeDay] { snapshot.weekEndingToday }
-    private var practicedThisWeek: Int { snapshot.practicedThisWeek }
+    let week: [PracticeDay]
+    let completed: Int
+    let goal: Int
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text("\(practicedThisWeek) of \(snapshot.weeklyGoal)")
+                Text("\(completed) of \(goal)")
                     .font(PoiseType.headline())
                     .foregroundStyle(Color.poiseNavy)
                 Text("sessions practiced")
@@ -679,7 +677,7 @@ private struct WeeklyActivityCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .poiseCard(radius: 20)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(practicedThisWeek) of \(snapshot.weeklyGoal) sessions practiced this week")
+        .accessibilityLabel("\(completed) of \(goal) sessions practiced this week")
     }
 }
 
@@ -706,7 +704,7 @@ private struct DayMark: View {
                 }
 
             Text(day.weekday)
-                .font(PoiseType.eyebrow(day.isToday ? .heavy : .bold))
+                .font(PoiseType.eyebrow())
                 .foregroundStyle(day.isToday ? Color.poiseNavy : Color.poiseMuted)
         }
         .frame(maxWidth: .infinity)
@@ -734,7 +732,7 @@ private enum CharacterCrops {
     // desktop. Width is derived from the panel's own aspect ratio so nothing
     // is re-cropped at display time.
     static var heroPanel: UIImage? {
-        crop(key: "hero", top: 0.05, bottom: 0.805, aspect: 126.0 / 184.0)
+        crop(key: "hero", top: 0.05, bottom: 0.805, aspect: 110.0 / 176.0)
     }
 
     private static func crop(key: String, top: CGFloat, bottom: CGFloat, aspect: CGFloat) -> UIImage? {

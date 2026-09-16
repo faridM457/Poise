@@ -17,9 +17,9 @@ struct PoiseRootView: View {
             case .learn:
                 LearnView()
             case .progress:
-                ProgressDashboardView(snapshot: PoiseMockData.progress)
+                ProgressDashboardView()
             case .profile:
-                ProfileView(profile: PoiseMockData.profile)
+                ProfileView()
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
