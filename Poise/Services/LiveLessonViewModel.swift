@@ -15,6 +15,14 @@ final class LiveLessonViewModel: ObservableObject {
     // every time the screen reloads.
     static let useMockDataForUITesting = true
 
+    // TESTING ONLY -- how many turns a mocked conversation runs before it ends
+    // and grades. The real lessons are 3 turns; 1 gets you to the scorecard
+    // quickly while iterating on it. Set back to nil to use the lesson's own
+    // turn count. Has no effect once useMockDataForUITesting is false, and
+    // deliberately does NOT change MockLessonContent.turnReplies, so the "5
+    // min" estimate on the Learn page still reflects the real lesson length.
+    static let mockTurnLimit: Int? = 1
+
     let lessonId: String
 
     @Published private(set) var isLoadingScenario = true
@@ -95,6 +103,16 @@ final class LiveLessonViewModel: ObservableObject {
             return
         }
 
+        // A lesson keeps the scenario it was given until it is completed, so
+        // reopening one shows the same situation you were already reading
+        // rather than generating a replacement (and paying for it). See
+        // ScenarioCache.
+        if let cached = ScenarioCache.scenario(for: lessonId) {
+            applyCached(cached)
+            isLoadingScenario = false
+            return
+        }
+
         do {
             let scenarioResponse = try await ConversationEngineClient.fetchScenario(lessonId: lessonId)
             scenario = scenarioResponse.scenario
@@ -106,6 +124,17 @@ final class LiveLessonViewModel: ObservableObject {
                 lessonId: lessonId,
                 scenario: scenarioResponse.scenario
             )
+
+            ScenarioCache.store(
+                CachedScenario(
+                    scenario: scenarioResponse.scenario,
+                    character: scenarioResponse.lesson.character,
+                    openingLine: opening.openingLine,
+                    openingCharacterName: opening.character,
+                    generatedAt: Date()
+                ),
+                for: lessonId
+            )
             // Text is fetched eagerly (good for latency), but NOT presented
             // (synthesized/played/appended) yet -- see presentOpeningLineIfNeeded().
             pendingOpeningLine = ConversationMessage(speaker: .npc, text: opening.openingLine, characterName: opening.character)
@@ -114,6 +143,22 @@ final class LiveLessonViewModel: ObservableObject {
             errorMessage = friendlyMessage(for: error)
         }
         isLoadingScenario = false
+    }
+
+    // Restores a scenario from the cache into exactly the state a fresh fetch
+    // would have left behind, including the un-presented opening line -- the
+    // roleplay screen still reveals it on its own schedule.
+    private func applyCached(_ cached: CachedScenario) {
+        scenario = cached.scenario
+        briefing = cached.scenario.briefing
+        criteria = cached.scenario.criteria
+        character = cached.character
+        pendingOpeningLine = ConversationMessage(
+            speaker: .npc,
+            text: cached.openingLine,
+            characterName: cached.openingCharacterName
+        )
+        history = [HistoryTurn(role: "npc", text: cached.openingLine, character: cached.openingCharacterName)]
     }
 
     /// Call once, when the roleplay screen itself actually appears. Presents
@@ -251,6 +296,7 @@ final class LiveLessonViewModel: ObservableObject {
         try? await Task.sleep(nanoseconds: 500_000_000)
 
         let mockReplies = mockContent.turnReplies
+        let turnsThisRun = min(Self.mockTurnLimit ?? mockReplies.count, mockReplies.count)
         let reply = mockReplies[min(turnNumber - 1, mockReplies.count - 1)]
 
         await presentNPCMessage(ConversationMessage(speaker: .npc, text: reply, characterName: character?.name ?? mockContent.character.name))
@@ -261,11 +307,41 @@ final class LiveLessonViewModel: ObservableObject {
             if !metCriteria.contains(newlyMet) { metCriteria.append(newlyMet) }
         }
 
-        if turnNumber >= mockReplies.count {
+        if turnNumber >= turnsThisRun {
             ended = true
             resolution = "approving"
             loadMockFeedback()
         }
+    }
+
+    // TESTING ONLY -- jumps straight to the scorecard without running a
+    // conversation, so the results screen can be worked on without playing
+    // three turns first. Driven by the Skip roleplay switch on Profile.
+    //
+    // Builds the feedback locally rather than asking the engine for it: a
+    // grading call with no transcript would either fail or invent a reading
+    // of a conversation that never happened, and paying tokens to be lied to
+    // is worse than an obviously synthetic card. The feedback line says so on
+    // its face, so this can never be mistaken for a real result.
+    func skipToResults() {
+        ended = true
+        resolution = "approving"
+        // One criterion left unmet so the checklist shows both states.
+        metCriteria = criteria.count > 1 ? Array(criteria.dropLast()) : criteria
+        feedback = FeedbackResponse(
+            checklist: criteria.map { ChecklistEntry(criterion: $0, met: metCriteria.contains($0)) },
+            deductionCount: 0,
+            empathySummary: EmpathySummary(strong: 1, adequate: 1, minimal: 0),
+            resolution: resolution,
+            feedbackLine: "Roleplay skipped for testing. No conversation happened, so nothing here is a real assessment.",
+            // Spread across three tiers so the checkpoint scorecard and the
+            // Progress chart both have something to draw.
+            skills: SkillScores(
+                clarity: SkillScore(level: "strong", note: "Placeholder note — the roleplay was skipped."),
+                empathy: SkillScore(level: "solid", note: "Placeholder note — the roleplay was skipped."),
+                resolution: SkillScore(level: "developing", note: "Placeholder note — the roleplay was skipped.")
+            )
+        )
     }
 
     private func loadMockFeedback() {
@@ -274,7 +350,26 @@ final class LiveLessonViewModel: ObservableObject {
             deductionCount: deductionCount,
             empathySummary: EmpathySummary(strong: 2, adequate: 1, minimal: 0),
             resolution: resolution,
-            feedbackLine: mockContent.feedbackLine
+            feedbackLine: mockContent.feedbackLine,
+            // SAMPLE TEXT, mock path only -- written to show the shape and
+            // quality the engine's notes are meant to have, so the scorecard
+            // can be judged without a server. Deliberately spread across three
+            // levels so every chip colour is visible. Never shown once
+            // useMockDataForUITesting is false.
+            skills: SkillScores(
+                clarity: SkillScore(
+                    level: "developing",
+                    note: "You raised the pattern but never said what it was costing the team."
+                ),
+                empathy: SkillScore(
+                    level: "needs_work",
+                    note: "They mentioned being stretched thin and you moved straight past it."
+                ),
+                resolution: SkillScore(
+                    level: "solid",
+                    note: "You agreed it should change, but not who does what next."
+                )
+            )
         )
     }
 
