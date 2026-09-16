@@ -29,9 +29,17 @@ struct PoiseRootView: View {
         // Energy regen is real-time-based (see LearnProgressStore), not tied
         // to app launches -- catch up on elapsed regen whenever the app
         // comes back to the foreground, not just at cold launch.
+        .task {
+            // Confirms (or corrects) the cached Pro flag the app launched
+            // with, so the energy cap and regen interval settle to the truth.
+            await SubscriptionStore.shared.refreshAtLaunch()
+        }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 LearnProgressStore.shared.refreshRegen()
+                // A subscription can lapse, be cancelled, or be restored on
+                // another device while the app is backgrounded.
+                Task { await SubscriptionStore.shared.refreshEntitlement() }
             }
         }
     }

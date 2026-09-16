@@ -1,3 +1,4 @@
+import RevenueCat
 import SwiftUI
 
 // Rebuilt on the shared system (see PoiseComponents' "Shared page chrome"):
@@ -9,6 +10,7 @@ import SwiftUI
 struct ProfileView: View {
     @ObservedObject private var store = LearnProgressStore.shared
     @ObservedObject private var profile = UserProfileStore.shared
+    @ObservedObject private var subscriptions = SubscriptionStore.shared
 
     @State private var voicePractice = false
     @State private var videoRecording = false
@@ -25,7 +27,7 @@ struct ProfileView: View {
                     badgesEarned: store.earnedBadges.count
                 )
 
-                UpgradeCard(isPremium: store.isPremium) { showPaywall = true }
+                UpgradeCard(isPremium: subscriptions.isPro) { showPaywall = true }
 
                 PoiseSection(title: "Privacy") {
                     PrivacyCard(
@@ -62,7 +64,7 @@ struct ProfileView: View {
         // area costs the ScrollView the root's bottom tab-bar inset.
         .background(Color.poiseCanvas.ignoresSafeArea())
         .sheet(isPresented: $showPaywall) {
-            PaywallSheet(isPremium: $store.isPremium)
+            PaywallSheet(subscriptions: subscriptions)
         }
         .alert("Reset all progress?", isPresented: $showResetConfirm) {
             Button("Reset", role: .destructive) { store.resetProgress() }
@@ -486,51 +488,17 @@ private struct FootNote: View {
 
 // MARK: - Paywall
 
-// A real paywall surface: plans, prices, what each one buys, and a purchase
-// button. The only thing still standing in is the purchase itself -- that call
-// is isolated in `purchase()` below, so wiring RevenueCat means replacing one
-// method body rather than rebuilding the screen.
+// The app's own paywall, driven by RevenueCat. The prebuilt RevenueCatUI
+// PaywallView was the obvious alternative and was deliberately not used: it
+// brings its own typography, spacing and button treatment, which is the exact
+// mismatch this screen was just rebuilt to remove. What RevenueCat owns here
+// is the commerce -- offerings, localized prices, the purchase, restore and
+// the entitlement -- while the presentation stays on the app's own ladder.
 private struct PaywallSheet: View {
-    @Binding var isPremium: Bool
+    @ObservedObject var subscriptions: SubscriptionStore
     @Environment(\.dismiss) private var dismiss
 
-    @State private var selected: Plan = .annual
-    @State private var isPurchasing = false
-
-    enum Plan: String, CaseIterable, Identifiable {
-        case monthly
-        case annual
-
-        var id: String { rawValue }
-
-        var title: String {
-            switch self {
-            case .monthly: return "Monthly"
-            case .annual: return "Annual"
-            }
-        }
-
-        var price: String {
-            switch self {
-            case .monthly: return "$7.99"
-            case .annual: return "$49.99"
-            }
-        }
-
-        var cadence: String {
-            switch self {
-            case .monthly: return "per month"
-            case .annual: return "per year"
-            }
-        }
-
-        var detail: String? {
-            switch self {
-            case .monthly: return nil
-            case .annual: return "$4.17 a month — save 48%"
-            }
-        }
-    }
+    @State private var selectedPackageID: String?
 
     private let benefits: [(icon: String, title: String, detail: String)] = [
         ("bolt.fill", "12 energy, refilling 4x faster",
@@ -544,6 +512,11 @@ private struct PaywallSheet: View {
         ("hand.raised.slash.fill", "No ads",
          "Free shows one ad after each lesson. Pro never interrupts a debrief."),
     ]
+
+    private var selectedPackage: Package? {
+        subscriptions.sortedPackages.first { $0.identifier == selectedPackageID }
+            ?? subscriptions.sortedPackages.first
+    }
 
     var body: some View {
         ZStack {
@@ -566,26 +539,32 @@ private struct PaywallSheet: View {
                         }
                     }
 
-                    Spacer().frame(height: 22)
-
-                    Text("Choose a plan")
-                        .font(PoiseType.eyebrow())
-                        .tracking(PoiseType.eyebrowTracking)
-                        .foregroundStyle(Color.poiseMuted)
-
-                    Spacer().frame(height: 10)
-
-                    VStack(spacing: 10) {
-                        ForEach(Plan.allCases) { plan in
-                            PlanRow(plan: plan, isSelected: selected == plan) { selected = plan }
-                        }
+                    if !subscriptions.isPro {
+                        Spacer().frame(height: 22)
+                        planSection
                     }
                 }
                 .padding(24)
             }
         }
-        .safeAreaInset(edge: .bottom) {
-            footer
+        .safeAreaInset(edge: .bottom) { footer }
+        .task {
+            await subscriptions.loadOfferings()
+            if selectedPackageID == nil {
+                selectedPackageID = subscriptions.sortedPackages.first?.identifier
+            }
+        }
+        .overlay {
+            if let message = subscriptions.errorMessage {
+                PoiseModal(
+                    icon: "exclamationmark.triangle.fill",
+                    iconColor: .poiseOrange,
+                    title: "Something went wrong",
+                    message: message,
+                    primaryTitle: "OK",
+                    onPrimary: { subscriptions.errorMessage = nil }
+                )
+            }
         }
     }
 
@@ -601,13 +580,13 @@ private struct PaywallSheet: View {
 
             Spacer().frame(height: 20)
 
-            Text(isPremium ? "You're on Poise Pro." : "Practice more, and on your own terms.")
+            Text(subscriptions.isPro ? "You're on Poise Pro." : "Practice more, and on your own terms.")
                 .font(PoiseType.title())
                 .foregroundStyle(Color.poiseNavy)
 
             Spacer().frame(height: 6)
 
-            Text(isPremium
+            Text(subscriptions.isPro
                  ? "Your plan is active. Manage or cancel it any time from the App Store."
                  : "More practice, spoken feedback, your own scenarios, and nothing interrupting them.")
                 .font(PoiseType.subhead())
@@ -616,13 +595,78 @@ private struct PaywallSheet: View {
         }
     }
 
+    @ViewBuilder
+    private var planSection: some View {
+        Text("Choose a plan")
+            .font(PoiseType.eyebrow())
+            .tracking(PoiseType.eyebrowTracking)
+            .foregroundStyle(Color.poiseMuted)
+
+        Spacer().frame(height: 10)
+
+        switch subscriptions.loadState {
+        case .idle, .loading:
+            PoiseSurfaceCard {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text("Loading plans")
+                        .font(PoiseType.subhead())
+                        .foregroundStyle(Color.poiseMuted)
+                    Spacer(minLength: 0)
+                }
+            }
+        case .unavailable(let reason):
+            // Says so plainly instead of showing an empty list above a button
+            // that cannot do anything.
+            PoiseSurfaceCard {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(reason)
+                        .font(PoiseType.subhead())
+                        .foregroundStyle(Color.poiseMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("Try again") {
+                        Task { await subscriptions.loadOfferings() }
+                    }
+                    .buttonStyle(PoiseFlatButtonStyle())
+                }
+            }
+        case .loaded:
+            VStack(spacing: 10) {
+                ForEach(subscriptions.sortedPackages, id: \.identifier) { package in
+                    PlanRow(
+                        package: package,
+                        isSelected: selectedPackage?.identifier == package.identifier,
+                        onSelect: { selectedPackageID = package.identifier }
+                    )
+                }
+            }
+        }
+    }
+
     private var footer: some View {
         VStack(spacing: 10) {
-            Button(action: purchase) {
-                Text(isPremium ? "Manage subscription" : "Start Poise Pro — \(selected.price) \(selected.cadence)")
+            Button(action: primaryAction) {
+                if subscriptions.isPurchasing {
+                    ProgressView().tint(.white)
+                } else {
+                    Text(primaryTitle)
+                }
             }
             .buttonStyle(PoiseFlatButtonStyle(fullWidth: true))
-            .disabled(isPurchasing)
+            .disabled(subscriptions.isPurchasing || (!subscriptions.isPro && selectedPackage == nil))
+
+            if !subscriptions.isPro {
+                // Required by App Review, and the only way a returning user on
+                // a new device gets their subscription back.
+                Button("Restore purchases") {
+                    Task {
+                        if await subscriptions.restorePurchases() { dismiss() }
+                    }
+                }
+                .font(PoiseType.caption(.bold))
+                .foregroundStyle(Color.poiseBlueDark)
+                .disabled(subscriptions.isPurchasing)
+            }
 
             Text("Cancel any time. Renews automatically until cancelled.")
                 .font(PoiseType.caption())
@@ -640,18 +684,21 @@ private struct PaywallSheet: View {
         }
     }
 
-    // The one place a real purchase would happen. Today it flips the local
-    // entitlement so the rest of the app can be exercised on both tiers;
-    // wiring RevenueCat replaces the body of this method and nothing else.
-    private func purchase() {
-        guard !isPremium else {
+    private var primaryTitle: String {
+        if subscriptions.isPro { return "Manage subscription" }
+        guard let package = selectedPackage else { return "Start Poise Pro" }
+        return "Start Poise Pro — \(package.storeProduct.localizedPriceString)"
+    }
+
+    private func primaryAction() {
+        guard !subscriptions.isPro else {
             dismiss()
             return
         }
-        isPurchasing = true
-        isPremium = true
-        isPurchasing = false
-        dismiss()
+        guard let package = selectedPackage else { return }
+        Task {
+            if await subscriptions.purchase(package) { dismiss() }
+        }
     }
 }
 
@@ -680,9 +727,39 @@ private struct BenefitRow: View {
 }
 
 private struct PlanRow: View {
-    let plan: PaywallSheet.Plan
+    let package: Package
     let isSelected: Bool
     let onSelect: () -> Void
+
+    private var title: String {
+        switch package.packageType {
+        case .annual: return "Annual"
+        case .monthly: return "Monthly"
+        case .weekly: return "Weekly"
+        case .lifetime: return "Lifetime"
+        default: return package.storeProduct.localizedTitle
+        }
+    }
+
+    private var cadence: String {
+        switch package.packageType {
+        case .annual: return "per year"
+        case .monthly: return "per month"
+        case .weekly: return "per week"
+        case .lifetime: return "one time"
+        default: return ""
+        }
+    }
+
+    // Only shown when StoreKit actually gives us a per-month figure, rather
+    // than dividing the price ourselves -- a hand-computed "$4.17 a month"
+    // goes wrong on tax-inclusive storefronts and odd currencies.
+    private var detail: String? {
+        guard package.packageType == .annual,
+              let monthly = package.storeProduct.localizedPricePerMonth
+        else { return nil }
+        return "\(monthly) a month"
+    }
 
     var body: some View {
         Button(action: onSelect) {
@@ -692,10 +769,10 @@ private struct PlanRow: View {
                     .foregroundStyle(isSelected ? Color.poiseBlueDark : Color.poiseTrack)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(plan.title)
+                    Text(title)
                         .font(PoiseType.body(.bold))
                         .foregroundStyle(Color.poiseNavy)
-                    if let detail = plan.detail {
+                    if let detail {
                         Text(detail)
                             .font(PoiseType.caption())
                             .foregroundStyle(Color.poiseMintDark)
@@ -705,10 +782,10 @@ private struct PlanRow: View {
                 Spacer(minLength: 8)
 
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(plan.price)
+                    Text(package.storeProduct.localizedPriceString)
                         .font(PoiseType.headline())
                         .foregroundStyle(Color.poiseNavy)
-                    Text(plan.cadence)
+                    Text(cadence)
                         .font(PoiseType.caption())
                         .foregroundStyle(Color.poiseMuted)
                 }
@@ -729,7 +806,7 @@ private struct PlanRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(plan.title), \(plan.price) \(plan.cadence)")
+        .accessibilityLabel("\(title), \(package.storeProduct.localizedPriceString) \(cadence)")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

@@ -35,13 +35,14 @@ final class LearnProgressStore: ObservableObject {
     // render of the Learn grid.
     @Published private(set) var completedLessonIDs: Set<String> = []
     @Published private(set) var energyRemaining: Int
-    // Whether the user is on Poise Pro. Set by the paywall (see
-    // ProfileView.PaywallSheet.purchase, the one place a real StoreKit /
-    // RevenueCat purchase would land). Pro changes exactly one thing: the
-    // energy cap, 3 free vs 10. Spend and regen behave identically on both
-    // tiers, which is why the paywall's benefits are all phrased as
-    // consequences of the larger reserve.
-    @Published var isPremium: Bool {
+    // Whether the user is on Poise Pro. Owned by RevenueCat and pushed down
+    // here by SubscriptionStore.applyEntitlement -- never set directly, or the
+    // app could believe someone is subscribed when the store disagrees.
+    //
+    // Cached in UserDefaults so the correct cap and regen interval are in
+    // place on the very first frame after launch, before the entitlement
+    // check returns. The check then confirms or corrects it.
+    @Published private(set) var isPremium: Bool {
         didSet {
             UserDefaults.standard.set(isPremium, forKey: Self.premiumKey)
             // The cap just changed -- reconcile immediately (e.g. clamp down
@@ -62,7 +63,7 @@ final class LearnProgressStore: ObservableObject {
     private static let skipRoleplayKey = "poise.debugSkipRoleplay"
     private static let energyKey = "poise.energyRemaining"
     private static let lastRegenKey = "poise.lastEnergyRegenDate"
-    private static let premiumKey = "poise.isPremiumMock"
+    private static let premiumKey = "poise.isPremium"
 
     private var lastRegenDate: Date
 
@@ -132,6 +133,11 @@ final class LearnProgressStore: ObservableObject {
         // Otherwise a reset account would reopen every lesson holding the
         // scenario its previous owner had already worked through.
         ScenarioCache.invalidateAll()
+    }
+
+    func applyEntitlement(isPro: Bool) {
+        guard isPremium != isPro else { return }
+        isPremium = isPro
     }
 
     var energyCap: Int { isPremium ? Self.premiumEnergyCap : Self.freeEnergyCap }
