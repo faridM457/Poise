@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		4B7C913047A022AF05CA9874 /* PocketTTS.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3B2A73BD70DC2E85640DA344 /* PocketTTS.xcframework */; };
 		ACC6D817BF86B16CFE007955 /* PocketTTS.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 3B2A73BD70DC2E85640DA344 /* PocketTTS.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		115E043E3058B86300442C82 /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = 115E043D3058B86300442C82 /* RevenueCat */; };
+		115E04403058B86B00442C82 /* RevenueCatUI in Frameworks */ = {isa = PBXBuildFile; productRef = 115E043F3058B86B00442C82 /* RevenueCatUI */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -44,6 +46,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				4B7C913047A022AF05CA9874 /* PocketTTS.xcframework in Frameworks */,
+				115E04403058B86B00442C82 /* RevenueCatUI in Frameworks */,
+				115E043E3058B86300442C82 /* RevenueCat in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -54,6 +58,7 @@
 			isa = PBXGroup;
 			children = (
 				115E03B13055171A00442C82 /* Poise */,
+				115E043C3058B86300442C82 /* Frameworks */,
 				115E03B03055171A00442C82 /* Products */,
 				386C415C3057521600C8CFB5 /* Recovered References */,
 			);
@@ -73,6 +78,13 @@
 				3B2A73BD70DC2E85640DA344 /* PocketTTS.xcframework */,
 			);
 			name = "Recovered References";
+			sourceTree = "<group>";
+		};
+		115E043C3058B86300442C82 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -96,6 +108,8 @@
 			);
 			name = Poise;
 			packageProductDependencies = (
+				115E043D3058B86300442C82 /* RevenueCat */,
+				115E043F3058B86B00442C82 /* RevenueCatUI */,
 			);
 			productName = Poise;
 			productReference = 115E03AF3055171A00442C82 /* Poise.app */;
@@ -125,6 +139,9 @@
 			);
 			mainGroup = 115E03A63055171A00442C82;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				115E043B3058AFEC00442C82 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 115E03B03055171A00442C82 /* Products */;
 			projectDirPath = "";
@@ -390,6 +407,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		115E043B3058AFEC00442C82 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/RevenueCat/purchases-ios-spm.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.89.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		115E043D3058B86300442C82 /* RevenueCat */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 115E043B3058AFEC00442C82 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */;
+			productName = RevenueCat;
+		};
+		115E043F3058B86B00442C82 /* RevenueCatUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 115E043B3058AFEC00442C82 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */;
+			productName = RevenueCatUI;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 115E03A73055171A00442C82 /* Project object */;
 }
