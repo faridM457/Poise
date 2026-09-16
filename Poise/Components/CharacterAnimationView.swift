@@ -48,6 +48,38 @@ struct CharacterAnimationView: View {
     }
 }
 
+// Process-wide cache of the clip assets, so the roleplay screen doesn't build
+// its AVPlayerItem from a cold file read the moment it appears.
+//
+// The briefing screen used to render a CharacterAnimationView, which warmed
+// the player as a side effect. It now shows a landscape still instead, so
+// nothing touched AVFoundation until roleplay opened -- and the gap between
+// the view appearing and the first frame decoding showed as a blank screen.
+// Call `preload` as early in the lesson flow as possible.
+@MainActor
+enum CharacterClipPreloader {
+    private static var assets: [String: AVURLAsset] = [:]
+
+    static func asset(named name: String) -> AVURLAsset? {
+        if let cached = assets[name] { return cached }
+        guard let url = Bundle.main.url(forResource: name, withExtension: "mp4") else { return nil }
+        let asset = AVURLAsset(url: url)
+        assets[name] = asset
+        return asset
+    }
+
+    // Warms the clip assets so building the player item isn't a cold file
+    // read. Called as the lesson flow opens.
+    static func preload(_ moods: [CharacterAnimationView.Mood]) {
+        for mood in moods {
+            guard let asset = asset(named: mood.rawValue) else { continue }
+            Task.detached(priority: .utility) {
+                _ = try? await asset.load(.isPlayable, .tracks)
+            }
+        }
+    }
+}
+
 private struct LoopingVideoPlayer: UIViewRepresentable {
     let resourceName: String
     var gravity: AVLayerVideoGravity = .resizeAspect
@@ -79,6 +111,7 @@ final class LoopingPlayerUIView: UIView {
         let player: AVQueuePlayer
         let layer: AVPlayerLayer
         var endObserver: NSObjectProtocol?
+        var readyObserver: NSKeyValueObservation?
 
         init(player: AVQueuePlayer, layer: AVPlayerLayer) {
             self.player = player
@@ -104,6 +137,7 @@ final class LoopingPlayerUIView: UIView {
             if let token = clip.endObserver {
                 NotificationCenter.default.removeObserver(token)
             }
+            clip.readyObserver?.invalidate()
         }
     }
 
@@ -116,28 +150,37 @@ final class LoopingPlayerUIView: UIView {
             loadClipIfNeeded(pair, gravity: gravity)
         }
 
-        // Swap via opacity, not isHidden. A hidden AVPlayerLayer can stop
-        // being actively composited, so when it's un-hidden it can show a
-        // stale/catching-up frame for an instant -- that's the flash. Every
-        // layer stays at opacity 1/0 while continuously, actively rendering
-        // underneath, so there's nothing to "catch up" on when it reappears.
-        // Explicitly disabling implicit actions makes the opacity change
-        // instant rather than a quick implicit cross-fade.
+        currentResourceName = resourceName
+        for clip in clips.values { clip.layer.videoGravity = gravity }
+        applyVisibility()
+    }
+
+    // Swap via opacity, not isHidden. A hidden AVPlayerLayer can stop being
+    // actively composited, so when it's un-hidden it can show a stale frame
+    // for an instant. Every layer stays at opacity 1/0 while continuously
+    // rendering underneath, so there's nothing to catch up on.
+    //
+    // The isReadyForDisplay gate matters because an AVPlayerLayer that exists
+    // but has no frame yet composites black. Raising opacity before then put
+    // a black rectangle on screen. With the layer now mounted for the whole
+    // lesson flow it is drawable long before the roleplay step shows it, but
+    // the gate keeps that guaranteed rather than incidental.
+    private func applyVisibility() {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         for (name, clip) in clips {
-            clip.layer.videoGravity = gravity
-            clip.layer.opacity = (name == resourceName) ? 1 : 0
+            let visible = name == currentResourceName && clip.layer.isReadyForDisplay
+            clip.layer.opacity = visible ? 1 : 0
         }
         CATransaction.commit()
-        currentResourceName = resourceName
     }
 
     private func loadClipIfNeeded(_ resourceName: String, gravity: AVLayerVideoGravity) {
         guard clips[resourceName] == nil else { return }
-        guard let url = Bundle.main.url(forResource: resourceName, withExtension: "mp4") else { return }
+        // Reuses the warmed asset when preload() has already run.
+        guard let asset = CharacterClipPreloader.asset(named: resourceName) else { return }
 
-        let item = AVPlayerItem(url: url)
+        let item = AVPlayerItem(asset: asset)
         let player = AVQueuePlayer(playerItem: item)
         player.isMuted = true
         // We loop manually below; don't let the player pause itself first.
@@ -158,6 +201,10 @@ final class LoopingPlayerUIView: UIView {
             player?.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero)
             player?.play()
         }
+        clip.readyObserver = playerLayer.observe(\.isReadyForDisplay, options: [.initial, .new]) { [weak self] layer, _ in
+            guard layer.isReadyForDisplay else { return }
+            Task { @MainActor in self?.applyVisibility() }
+        }
         clips[resourceName] = clip
         player.play()
     }
@@ -173,8 +220,11 @@ final class LoopingPlayerUIView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         for clip in clips.values {
             clip.layer.frame = bounds
         }
+        CATransaction.commit()
     }
 }
