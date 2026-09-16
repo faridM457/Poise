@@ -2,6 +2,8 @@ import {
   BedrockRuntimeClient,
   ConverseCommand,
 } from "@aws-sdk/client-bedrock-runtime";
+import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
+import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
 
 // Claude on Amazon Bedrock.
 //
@@ -27,13 +29,89 @@ import {
 const MODEL_ID =
   process.env.BEDROCK_MODEL_ID || "us.anthropic.claude-haiku-4-5-20251001-v1:0";
 
-// Left to the SDK's own resolution chain when AWS_REGION is unset, so a
-// machine already configured for AWS (~/.aws/config) is not silently
-// overridden by a hardcoded default pointing at the wrong region -- where the
-// model list, and therefore model access, is different.
 const REGION = process.env.AWS_REGION;
 
-const client = new BedrockRuntimeClient(REGION ? { region: REGION } : {});
+// Credentials are never taken implicitly.
+//
+// The AWS SDK's default provider chain falls back to ~/.aws/credentials, so a
+// client built with no credentials silently runs as whatever IAM user happens
+// to be configured on the machine -- and bills that account. That is not
+// hypothetical: it already happened here once, against an unrelated personal
+// profile left over from another project.
+//
+// So the source has to be stated. Exactly one of:
+//
+//   AWS_PROFILE                     a named profile (SSO or otherwise). The
+//                                   normal local-development answer, and the
+//                                   one that cannot pick up [default].
+//   AWS_ACCESS_KEY_ID / _SECRET_    explicit keys.
+//   AWS_USE_AMBIENT_CREDENTIALS     the provider chain, deliberately. Correct
+//                                   in deployment, where an ECS task role or
+//                                   EC2 instance role supplies credentials and
+//                                   there are no env vars to read.
+//
+// Nothing is used by default.
+const PROFILE = process.env.AWS_PROFILE;
+
+// Optional but strongly worth setting: the account this service is allowed to
+// bill. Checked once, lazily, against STS. A profile can be re-pointed, an SSO
+// session can resolve somewhere unexpected, and a role can be assumed in the
+// wrong account -- this turns any of those into a refusal instead of a
+// surprise on someone's bill.
+const EXPECTED_ACCOUNT_ID = process.env.AWS_EXPECTED_ACCOUNT_ID;
+
+function credentialSource() {
+  if (PROFILE) {
+    return { credentials: fromNodeProviderChain({ profile: PROFILE }), label: `profile "${PROFILE}"` };
+  }
+  if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+    return {
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+        ...(process.env.AWS_SESSION_TOKEN ? { sessionToken: process.env.AWS_SESSION_TOKEN } : {}),
+      },
+      label: "explicit AWS_ACCESS_KEY_ID",
+    };
+  }
+  if (process.env.AWS_USE_AMBIENT_CREDENTIALS === "true") {
+    return { credentials: undefined, label: "the AWS provider chain (ambient, opted in)" };
+  }
+  return null;
+}
+
+const source = credentialSource();
+
+const client = source
+  ? new BedrockRuntimeClient({
+      ...(REGION ? { region: REGION } : {}),
+      ...(source.credentials ? { credentials: source.credentials } : {}),
+    })
+  : null;
+
+// Resolved once and reused; null means the check is disabled.
+let accountCheck = null;
+
+async function assertExpectedAccount() {
+  if (!EXPECTED_ACCOUNT_ID) return;
+  if (!accountCheck) {
+    accountCheck = (async () => {
+      const sts = new STSClient({
+        ...(REGION ? { region: REGION } : {}),
+        ...(source.credentials ? { credentials: source.credentials } : {}),
+      });
+      const identity = await sts.send(new GetCallerIdentityCommand({}));
+      if (identity.Account !== EXPECTED_ACCOUNT_ID) {
+        throw new Error(
+          `Refusing to run: credentials from ${source.label} resolve to AWS account ` +
+            `${identity.Account} (${identity.Arn}), but AWS_EXPECTED_ACCOUNT_ID is ` +
+            `${EXPECTED_ACCOUNT_ID}. Fix the profile or the expectation before any billable call.`
+        );
+      }
+    })();
+  }
+  await accountCheck;
+}
 
 function regionLabel() {
   return REGION ?? "the region from your AWS config";
@@ -58,6 +136,18 @@ export async function structuredCall({
   toolName = "submit_response",
   maxTokens = 512,
 }) {
+  if (!client) {
+    throw new Error(
+      "No Bedrock credential source configured. Set AWS_PROFILE to a named profile, or " +
+        "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, or AWS_USE_AMBIENT_CREDENTIALS=true to " +
+        "deliberately use the provider chain (an instance or task role in deployment). " +
+        "Refusing to fall back to the machine's default profile, which bills whichever account " +
+        "it happens to belong to."
+    );
+  }
+
+  await assertExpectedAccount();
+
   const prompt = messages.map((m) => m.content).join("\n\n");
 
   let response;
