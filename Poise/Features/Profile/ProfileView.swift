@@ -7,54 +7,68 @@ import SwiftUI
 // capsule CTA -- so the app's one promotional surface and its one primary
 // action look like the same idea rather than two different designs.
 struct ProfileView: View {
-    let profile: UserProfile
-
     @ObservedObject private var store = LearnProgressStore.shared
+    @ObservedObject private var profile = UserProfileStore.shared
+
     @State private var voicePractice = false
     @State private var videoRecording = false
     @State private var saveRecordings = false
-    @State private var soundEffects = true
     @State private var showPaywall = false
+    @State private var showResetConfirm = false
 
     var body: some View {
         ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 26) {
-                    ProfileIdentity(profile: profile, energyText: store.energyDisplayText)
+            VStack(alignment: .leading, spacing: 26) {
+                ProfileIdentity(
+                    profile: profile,
+                    lessonsDone: store.completedLessonIDs.count,
+                    badgesEarned: store.earnedBadges.count
+                )
 
-                    UpgradeCard(plan: profile.plan) { showPaywall = true }
+                UpgradeCard(isPremium: store.isPremium) { showPaywall = true }
 
-                    PoiseSection(title: "Privacy") {
-                        PrivacyCard(
-                            voicePractice: $voicePractice,
-                            videoRecording: $videoRecording,
-                            saveRecordings: $saveRecordings
-                        )
-                    }
-
-                    PoiseSection(title: "Account & settings") {
-                        SettingsCard(soundEffects: $soundEffects)
-                    }
-
-                    PoiseSection(title: "Testing") {
-                        DebugCard(isPremium: $store.isPremium)
-                    }
-
-                    // The tab bar is a bottom safeAreaInset (see PoiseRootView),
-                    // so the scroll view already accounts for its height --
-                    // this is just air under the last card.
-                    Color.clear.frame(height: 16)
+                PoiseSection(title: "Privacy") {
+                    PrivacyCard(
+                        voicePractice: $voicePractice,
+                        videoRecording: $videoRecording,
+                        saveRecordings: $saveRecordings
+                    )
                 }
-        .padding(.horizontal, 20)
-        .padding(.top, 10)
+
+                PoiseSection(title: "Account & settings") {
+                    SettingsCard(profile: profile, onReset: { showResetConfirm = true })
+                }
+
+                PoiseSection(title: "Testing") {
+                    VStack(alignment: .leading, spacing: 18) {
+                        EnergyCheatCard(store: store)
+                        ClockCheatCard(store: store)
+                        SkipRoleplayCard(store: store)
+                    }
+                }
+
+                // The tab bar is a bottom safeAreaInset (see PoiseRootView),
+                // so the scroll view already accounts for its height --
+                // this is just air under the last card.
+                Color.clear.frame(height: 16)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            PoiseTopBar(streak: PoiseMockData.progress.streakDays, energyText: store.energyDisplayText)
+            PoiseTopBar(streak: store.currentStreak, energyText: store.energyDisplayText)
         }
         // See ProgressDashboardView: a ZStack sibling that ignores the safe
         // area costs the ScrollView the root's bottom tab-bar inset.
         .background(Color.poiseCanvas.ignoresSafeArea())
         .sheet(isPresented: $showPaywall) {
-            MockPaywallSheet()
+            PaywallSheet(isPremium: $store.isPremium)
+        }
+        .alert("Reset all progress?", isPresented: $showResetConfirm) {
+            Button("Reset", role: .destructive) { store.resetProgress() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Every finished conversation, your streak and all badges will be cleared. This can't be undone.")
         }
     }
 }
@@ -65,10 +79,24 @@ struct ProfileView: View {
 // name saying the same thing. The initial tile uses PoiseIconBadge's geometry
 // (radius = 0.3x size) at a larger size.
 private struct ProfileIdentity: View {
-    let profile: UserProfile
-    let energyText: String
+    @ObservedObject var profile: UserProfileStore
+    let lessonsDone: Int
+    let badgesEarned: Int
+
+    @State private var isEditing = false
+    @FocusState private var nameFocused: Bool
 
     private let tileSize: CGFloat = 60
+
+    // Was a fixed "practicing with purpose" for everyone. Now it reports what
+    // the user has actually done, which is the only thing this line can say
+    // that they can't already see is untrue.
+    private var subtitle: String {
+        guard lessonsDone > 0 else { return "No conversations yet" }
+        let lessons = "\(lessonsDone) lesson\(lessonsDone == 1 ? "" : "s") done"
+        guard badgesEarned > 0 else { return lessons }
+        return lessons + " · \(badgesEarned) badge\(badgesEarned == 1 ? "" : "s")"
+    }
 
     var body: some View {
         HStack(spacing: 14) {
@@ -80,10 +108,32 @@ private struct ProfileIdentity: View {
                 .clipShape(RoundedRectangle(cornerRadius: tileSize * 0.3, style: .continuous))
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(profile.name)
-                    .font(PoiseType.title())
-                    .foregroundStyle(Color.poiseNavy)
-                Text(profile.subtitle)
+                if isEditing {
+                    TextField("Your name", text: $profile.name)
+                        .font(PoiseType.title())
+                        .foregroundStyle(Color.poiseNavy)
+                        .textInputAutocapitalization(.words)
+                        .submitLabel(.done)
+                        .focused($nameFocused)
+                        .onSubmit { isEditing = false }
+                } else {
+                    Button {
+                        isEditing = true
+                        nameFocused = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(profile.hasName ? profile.name : "Add your name")
+                                .font(PoiseType.title())
+                                .foregroundStyle(profile.hasName ? Color.poiseNavy : Color.poiseMuted)
+                            Image(systemName: "pencil")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Color.poiseMuted)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Text(subtitle)
                     .font(PoiseType.subhead())
                     .foregroundStyle(Color.poiseMuted)
             }
@@ -95,12 +145,12 @@ private struct ProfileIdentity: View {
 // MARK: - Upgrade
 
 private struct UpgradeCard: View {
-    let plan: String
+    let isPremium: Bool
     let onExplore: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            PoiseEyebrow(text: plan, color: .poiseBlueDark)
+            PoiseEyebrow(text: isPremium ? "Poise Pro" : "Free plan", color: .poiseBlueDark)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
                 .background(Color.white.opacity(0.75))
@@ -108,22 +158,24 @@ private struct UpgradeCard: View {
 
             Spacer().frame(height: 12)
 
-            Text("More room to practice.")
+            Text(isPremium ? "You're on Poise Pro." : "More room to practice.")
                 .font(PoiseType.headline())
                 .foregroundStyle(Color.poiseNavy)
 
             Spacer().frame(height: 5)
 
-            Text("Unlock unlimited rehearsals and deeper insights as they become available.")
+            Text(isPremium
+                 ? "Twelve energy refilling every 2 hours, voice analysis, and scenarios you write yourself."
+                 : "Twelve energy refilling 4x faster, voice analysis, your own scenarios, and no ads.")
                 .font(PoiseType.subhead())
                 .foregroundStyle(Color.poiseMuted)
                 .fixedSize(horizontal: false, vertical: true)
 
             Spacer().frame(height: 16)
 
-            Button("Explore Poise Pro", action: onExplore)
+            Button(isPremium ? "Manage plan" : "Explore Poise Pro", action: onExplore)
                 .buttonStyle(PoiseFlatButtonStyle())
-                .accessibilityLabel("Explore Poise Pro")
+                .accessibilityLabel(isPremium ? "Manage plan" : "Explore Poise Pro")
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -159,59 +211,213 @@ private struct PrivacyCard: View {
                 VStack(spacing: 0) {
                     SettingsToggleRow(
                         title: "Voice practice",
-                        subtitle: "Would allow microphone recording during a session.",
+                        subtitle: "Speak your turns instead of typing them.",
                         isOn: $voicePractice
                     )
                     PoiseDivider().padding(.horizontal, 16)
                     SettingsToggleRow(
                         title: "Video recording",
-                        subtitle: "Post-MVP preview setting. Camera stays off.",
+                        subtitle: "Record video alongside a session for your own review.",
                         isOn: $videoRecording
                     )
                     PoiseDivider().padding(.horizontal, 16)
                     SettingsToggleRow(
                         title: "Save recordings",
-                        subtitle: "Off by default. Keep recordings only when you choose.",
+                        subtitle: "Off by default. Keep a session only when you choose to.",
                         isOn: $saveRecordings
                     )
                 }
             }
 
-            FootNote("Controls change local demo state only. No recording, uploading, or account changes occur.")
+            FootNote("Nothing is recorded or uploaded. These settings stay on this device.")
         }
     }
 }
 
 private struct SettingsCard: View {
-    @Binding var soundEffects: Bool
+    @ObservedObject var profile: UserProfileStore
+    let onReset: () -> Void
 
     var body: some View {
         PoiseSurfaceCard(padding: 0) {
             VStack(spacing: 0) {
-                SettingsValueRow(title: "Practice language", value: "English")
+                // English is the only language the lesson content exists in,
+                // so this is shown as a fact rather than as a picker that
+                // would offer choices the app can't honour.
+                SettingsValueRow(title: "Practice language", value: profile.practiceLanguage)
                 PoiseDivider().padding(.horizontal, 16)
-                SettingsToggleRow(title: "Sound effects", subtitle: nil, isOn: $soundEffects)
+                SettingsToggleRow(title: "Sound effects", subtitle: nil, isOn: $profile.soundEffects)
                 PoiseDivider().padding(.horizontal, 16)
-                SettingsValueRow(title: "Account", value: "Demo profile")
+                Button(action: onReset) {
+                    HStack {
+                        Text("Reset progress")
+                            .font(PoiseType.body(.bold))
+                            .foregroundStyle(SkillLevel.needsWork.tint)
+                        Spacer(minLength: 12)
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(SkillLevel.needsWork.tint)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 16)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
         }
     }
 }
 
-// Testing-only toggle for the mocked premium tier -- there's no real
-// subscription/IAP integration yet, this just flips which energy cap
-// LearnProgressStore uses (3 free / 10 premium) so both can be tested.
-private struct DebugCard: View {
-    @Binding var isPremium: Bool
+// MARK: - Testing
+
+// Development-only. Energy regenerates on a real-world clock, so without
+// this neither end of the range can be reached on demand: you cannot see the
+// out-of-energy block without waiting out three real conversations, and you
+// cannot get back to full without waiting a day. Delete this card and
+// LearnProgressStore's "Testing helpers" section together before shipping.
+private struct EnergyCheatCard: View {
+    @ObservedObject var store: LearnProgressStore
 
     var body: some View {
-        PoiseSurfaceCard(padding: 0) {
-            SettingsToggleRow(
-                title: "Premium (mock)",
-                subtitle: "Raises the energy cap from 3 to 10. No real subscription is involved.",
-                isOn: $isPremium
-            )
+        VStack(alignment: .leading, spacing: 10) {
+            PoiseSurfaceCard {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(spacing: 10) {
+                        PoiseIconBadge(icon: "bolt.fill", color: .poiseAmber)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(store.energyDisplayText)
+                                .font(PoiseType.headline())
+                                .foregroundStyle(Color.poiseNavy)
+                            Text(store.countdownText().map { "Next in \($0)" } ?? "Full")
+                                .font(PoiseType.subhead())
+                                .foregroundStyle(Color.poiseMuted)
+                                .monospacedDigit()
+                        }
+                        Spacer(minLength: 8)
+                    }
+
+                    HStack(spacing: 10) {
+                        CheatButton(title: "1", icon: "plus") {
+                            store.grantEnergy()
+                        }
+                        .disabled(store.energyRemaining >= store.energyCap)
+
+                        CheatButton(title: "Fill", icon: "bolt.fill") {
+                            store.grantEnergy(store.energyCap)
+                        }
+                        .disabled(store.energyRemaining >= store.energyCap)
+
+                        CheatButton(title: "Empty", icon: "minus") {
+                            store.drainEnergy()
+                        }
+                        .disabled(store.energyRemaining == 0)
+                    }
+                }
+            }
+
+            FootNote("Development shortcuts. Empty is how you reach the out-of-energy block without waiting out the regen clock.")
         }
+    }
+}
+
+// Development-only, and the loudest thing on this page when it is active:
+// with the clock moved, every date the app shows is a lie, and forgetting that
+// would make the calendar and streak look broken rather than shifted.
+private struct ClockCheatCard: View {
+    @ObservedObject var store: LearnProgressStore
+
+    private var simulatedDate: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE d MMMM"
+        return formatter.string(from: store.now)
+    }
+
+    private var offsetLabel: String {
+        let days = -store.debugDayOffset
+        guard days > 0 else { return "Real date" }
+        return "\(days) day\(days == 1 ? "" : "s") back"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            PoiseSurfaceCard {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(spacing: 10) {
+                        PoiseIconBadge(
+                            icon: store.isTimeTravelling ? "clock.badge.exclamationmark.fill" : "calendar",
+                            color: store.isTimeTravelling ? .poiseOrange : .poiseBlueDark
+                        )
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(simulatedDate)
+                                .font(PoiseType.headline())
+                                .foregroundStyle(Color.poiseNavy)
+                            Text(offsetLabel)
+                                .font(PoiseType.subhead())
+                                .foregroundStyle(store.isTimeTravelling ? Color.poiseOrange : Color.poiseMuted)
+                        }
+                        Spacer(minLength: 8)
+                    }
+
+                    HStack(spacing: 10) {
+                        CheatButton(title: "1 day", icon: "chevron.left") {
+                            store.stepBackOneDay()
+                        }
+
+                        CheatButton(title: "Today", icon: "arrow.uturn.right") {
+                            store.returnToToday()
+                        }
+                        .disabled(!store.isTimeTravelling)
+                    }
+                }
+            }
+
+            FootNote("Moves the app's idea of today backwards so a streak can be built in one sitting: step back a day, finish a lesson, return to today, finish another. Energy keeps the real clock.")
+        }
+    }
+}
+
+private struct SkipRoleplayCard: View {
+    @ObservedObject var store: LearnProgressStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            PoiseSurfaceCard(padding: 0) {
+                SettingsToggleRow(
+                    title: "Skip roleplay",
+                    subtitle: "\"Let's practice\" jumps straight to the results screen.",
+                    isOn: $store.debugSkipRoleplay
+                )
+            }
+
+            FootNote("Energy is still spent, so the cost and the out-of-energy block behave normally. The scorecard is synthetic — nothing on it is a real assessment.")
+        }
+    }
+}
+
+private struct CheatButton: View {
+    let title: String
+    let icon: String
+    let action: () -> Void
+
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .bold))
+                Text(title)
+                    .font(PoiseType.subhead(.bold))
+            }
+            .foregroundStyle(isEnabled ? Color.poiseBlueDark : Color.poiseMuted)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 11)
+            .background(isEnabled ? Color.poiseSoftBlue : Color.poiseSoftGray)
+            .clipShape(Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(title) energy")
     }
 }
 
@@ -280,72 +486,250 @@ private struct FootNote: View {
 
 // MARK: - Paywall
 
-private struct MockPaywallSheet: View {
+// A real paywall surface: plans, prices, what each one buys, and a purchase
+// button. The only thing still standing in is the purchase itself -- that call
+// is isolated in `purchase()` below, so wiring RevenueCat means replacing one
+// method body rather than rebuilding the screen.
+private struct PaywallSheet: View {
+    @Binding var isPremium: Bool
     @Environment(\.dismiss) private var dismiss
 
-    private let disclaimers = [
-        "No purchase flow in this prototype",
-        "No StoreKit or RevenueCat integration",
-        "No account or payment information collected"
+    @State private var selected: Plan = .annual
+    @State private var isPurchasing = false
+
+    enum Plan: String, CaseIterable, Identifiable {
+        case monthly
+        case annual
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .monthly: return "Monthly"
+            case .annual: return "Annual"
+            }
+        }
+
+        var price: String {
+            switch self {
+            case .monthly: return "$7.99"
+            case .annual: return "$49.99"
+            }
+        }
+
+        var cadence: String {
+            switch self {
+            case .monthly: return "per month"
+            case .annual: return "per year"
+            }
+        }
+
+        var detail: String? {
+            switch self {
+            case .monthly: return nil
+            case .annual: return "$4.17 a month — save 48%"
+            }
+        }
+    }
+
+    private let benefits: [(icon: String, title: String, detail: String)] = [
+        ("bolt.fill", "12 energy, refilling 4x faster",
+         "One back every 2 hours instead of every 8 — a full reserve a day, against three on Free."),
+        // Marked because neither is built yet -- the paywall should not read
+        // as if paying today unlocks them.
+        ("waveform", "Voice analysis",
+         "Practice out loud and get read back on pace, clarity and tone, not just on what you said. (Coming Soon)"),
+        ("wand.and.stars", "Build your own scenarios",
+         "Describe the conversation you're actually dreading and practice that one, in your own words. (Coming Soon)"),
+        ("hand.raised.slash.fill", "No ads",
+         "Free shows one ad after each lesson. Pro never interrupts a debrief."),
     ]
 
     var body: some View {
         ZStack {
             Color.poiseCanvas.ignoresSafeArea()
 
-            VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    PoiseIconBadge(icon: "sparkles", color: .poiseGold, size: 44)
-                    Spacer()
-                    Button("Done") { dismiss() }
-                        .font(PoiseType.body(.bold))
-                        .foregroundStyle(Color.poiseBlueDark)
-                }
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    header
 
-                Spacer().frame(height: 20)
+                    Spacer().frame(height: 22)
 
-                Text("Poise Pro preview")
-                    .font(PoiseType.title())
-                    .foregroundStyle(Color.poiseNavy)
-
-                Spacer().frame(height: 6)
-
-                Text("A future subscription could include unlimited rehearsals, advanced practice packs, and richer consent-based insights.")
-                    .font(PoiseType.subhead())
-                    .foregroundStyle(Color.poiseMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Spacer().frame(height: 22)
-
-                PoiseSurfaceCard(padding: 0) {
-                    VStack(spacing: 0) {
-                        ForEach(Array(disclaimers.enumerated()), id: \.element) { index, line in
-                            if index > 0 {
-                                PoiseDivider().padding(.horizontal, 16)
+                    PoiseSurfaceCard(padding: 0) {
+                        VStack(spacing: 0) {
+                            ForEach(Array(benefits.enumerated()), id: \.element.title) { index, benefit in
+                                if index > 0 {
+                                    PoiseDivider().padding(.leading, 68)
+                                }
+                                BenefitRow(icon: benefit.icon, title: benefit.title, detail: benefit.detail)
                             }
-                            HStack(spacing: 12) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundStyle(Color.poiseMintDark)
-                                Text(line)
-                                    .font(PoiseType.subhead(.semibold))
-                                    .foregroundStyle(Color.poiseNavy)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                Spacer(minLength: 0)
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 14)
+                        }
+                    }
+
+                    Spacer().frame(height: 22)
+
+                    Text("Choose a plan")
+                        .font(PoiseType.eyebrow())
+                        .tracking(PoiseType.eyebrowTracking)
+                        .foregroundStyle(Color.poiseMuted)
+
+                    Spacer().frame(height: 10)
+
+                    VStack(spacing: 10) {
+                        ForEach(Plan.allCases) { plan in
+                            PlanRow(plan: plan, isSelected: selected == plan) { selected = plan }
                         }
                     }
                 }
-
-                Spacer(minLength: 24)
-
-                Button("Close") { dismiss() }
-                    .buttonStyle(PoiseFlatButtonStyle(fullWidth: true))
-                    .accessibilityLabel("Close Poise Pro preview")
+                .padding(24)
             }
-            .padding(24)
         }
+        .safeAreaInset(edge: .bottom) {
+            footer
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                PoiseIconBadge(icon: "sparkles", color: .poiseGold, size: 44)
+                Spacer()
+                Button("Done") { dismiss() }
+                    .font(PoiseType.body(.bold))
+                    .foregroundStyle(Color.poiseBlueDark)
+            }
+
+            Spacer().frame(height: 20)
+
+            Text(isPremium ? "You're on Poise Pro." : "Practice more, and on your own terms.")
+                .font(PoiseType.title())
+                .foregroundStyle(Color.poiseNavy)
+
+            Spacer().frame(height: 6)
+
+            Text(isPremium
+                 ? "Your plan is active. Manage or cancel it any time from the App Store."
+                 : "More practice, spoken feedback, your own scenarios, and nothing interrupting them.")
+                .font(PoiseType.subhead())
+                .foregroundStyle(Color.poiseMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var footer: some View {
+        VStack(spacing: 10) {
+            Button(action: purchase) {
+                Text(isPremium ? "Manage subscription" : "Start Poise Pro — \(selected.price) \(selected.cadence)")
+            }
+            .buttonStyle(PoiseFlatButtonStyle(fullWidth: true))
+            .disabled(isPurchasing)
+
+            Text("Cancel any time. Renews automatically until cancelled.")
+                .font(PoiseType.caption())
+                .foregroundStyle(Color.poiseMuted)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 14)
+        .padding(.bottom, 8)
+        .background(Color.poiseCanvas)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color.poiseBorder.opacity(0.8))
+                .frame(height: 1)
+        }
+    }
+
+    // The one place a real purchase would happen. Today it flips the local
+    // entitlement so the rest of the app can be exercised on both tiers;
+    // wiring RevenueCat replaces the body of this method and nothing else.
+    private func purchase() {
+        guard !isPremium else {
+            dismiss()
+            return
+        }
+        isPurchasing = true
+        isPremium = true
+        isPurchasing = false
+        dismiss()
+    }
+}
+
+private struct BenefitRow: View {
+    let icon: String
+    let title: String
+    let detail: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            PoiseIconBadge(icon: icon, color: .poiseBlueDark)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(PoiseType.body(.bold))
+                    .foregroundStyle(Color.poiseNavy)
+                Text(detail)
+                    .font(PoiseType.caption())
+                    .foregroundStyle(Color.poiseMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+    }
+}
+
+private struct PlanRow: View {
+    let plan: PaywallSheet.Plan
+    let isSelected: Bool
+    let onSelect: () -> Void
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: 14) {
+                Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(isSelected ? Color.poiseBlueDark : Color.poiseTrack)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(plan.title)
+                        .font(PoiseType.body(.bold))
+                        .foregroundStyle(Color.poiseNavy)
+                    if let detail = plan.detail {
+                        Text(detail)
+                            .font(PoiseType.caption())
+                            .foregroundStyle(Color.poiseMintDark)
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(plan.price)
+                        .font(PoiseType.headline())
+                        .foregroundStyle(Color.poiseNavy)
+                    Text(plan.cadence)
+                        .font(PoiseType.caption())
+                        .foregroundStyle(Color.poiseMuted)
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            // Matches PoiseSurfaceCard's geometry -- radius 20, hairline, one
+            // soft shadow -- rather than inventing a second card treatment on
+            // the one screen a new user is most likely to scrutinise. Only the
+            // selected row thickens its stroke, which is the selection itself.
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(isSelected ? Color.poiseBlueDark : Color.poiseBorder, lineWidth: isSelected ? 2 : 1)
+            )
+            .shadow(color: .poiseNavy.opacity(0.05), radius: 8, x: 0, y: 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(plan.title), \(plan.price) \(plan.cadence)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
