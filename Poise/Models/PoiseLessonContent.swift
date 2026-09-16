@@ -144,7 +144,7 @@ enum PoiseLessonLibrary {
             icon: "flag.checkered",
             isCheckpoint: true,
             character: EngineCharacter(name: "Jamie", role: "Direct report", relationship: "5 months on the team, reports to the user"),
-            briefing: "A combined scenario for Unit 1: Jamie has a specific pattern with a plausible, sympathetic reason behind it. Name it, explain the impact, and hear Jamie out -- without a guide this time.",
+            briefing: "Jamie has missed or joined late to most of the team's daily stand-ups over the last three weeks, and the rest of the team keeps recapping for them. You've set up a few minutes with Jamie.",
             criteria: [
                 "Name the specific behavior or pattern directly",
                 "State the concrete impact of the behavior",
@@ -156,7 +156,7 @@ enum PoiseLessonLibrary {
                 "That's a fair point. I can see how that's been affecting things.",
                 "Okay, I'm on board -- let's figure out what I'll do differently going forward.",
             ],
-            feedbackLine: "Even without a visible guide, you hit all three moves -- naming the pattern, stating its impact, and checking in with Jamie before wrapping up."
+            feedbackLine: "Without a checklist this time, you still hit all three moves -- naming the pattern, stating its impact, and checking in with Jamie before wrapping up."
         ),
 
         // MARK: - Unit 2: Everyday Workplace Friction (mild resistance)
@@ -255,7 +255,7 @@ enum PoiseLessonLibrary {
             icon: "flag.checkered",
             isCheckpoint: true,
             character: EngineCharacter(name: "Reese", role: "Peer, coworker on an adjacent team", relationship: "Works closely with the user cross-functionally"),
-            briefing: "A combined scenario for Unit 2: Reese has a specific behavioral pattern with a plausible innocent explanation. Address it without a visible guide.",
+            briefing: "Twice in the last month, Reese has posted decisions that affect your team in the shared project channel before raising them with you, so your team found out from the channel. You've grabbed time with Reese.",
             criteria: [
                 "Name the specific pattern with a concrete example",
                 "Stay neutral in tone instead of accusatory",
@@ -364,7 +364,7 @@ enum PoiseLessonLibrary {
             icon: "flag.checkered",
             isCheckpoint: true,
             character: EngineCharacter(name: "Quinn", role: "Peer, coworker on an adjacent team", relationship: "Occasionally asks the user for cross-team help"),
-            briefing: "A combined scenario for Unit 3: Quinn has an unreasonable ask pending. Say no to or renegotiate it, without a visible guide.",
+            briefing: "Quinn has asked your team to take on an extra data pull before their launch on Friday. Your team is already committed through the end of the week, and picking it up would put your own deadline at risk. Quinn is following up.",
             criteria: [
                 "Clearly decline or renegotiate the ask",
                 "Give a concrete reason",
@@ -475,7 +475,7 @@ enum PoiseLessonLibrary {
             icon: "flag.checkered",
             isCheckpoint: true,
             character: EngineCharacter(name: "Alex", role: "Direct report", relationship: "1 year on the team, reports to the user"),
-            briefing: "A combined scenario for Unit 4: Alex has a clear behavioral pattern with a real personal factor complicating it. Balance directness with empathy, without a visible guide.",
+            briefing: "Alex's work has slipped over the past two months -- missed review deadlines, and two releases that went out with errors the team caught late. Alex has mentioned a difficult situation at home. You've set up a one-on-one.",
             criteria: [
                 "Name the specific behavior or pattern directly",
                 "State the impact on the team or work",

@@ -169,10 +169,9 @@ export const lessons = [
       relationship: "5 months on the team, reports to the user",
     },
     scenarioTemplate:
-      "A combined scenario drawing on Unit 1's skills: the user needs to give feedback on a direct " +
-      "report's pattern that has both a clear specific behavior and a plausible, sympathetic reason " +
-      "behind it, requiring the user to name it, explain the impact, and understand the direct report's " +
-      "side, all without a visible guide.",
+      "A direct report has missed or joined late to most of the team's daily stand-ups over the last " +
+      "three weeks, and the rest of the team keeps recapping for them. There is a sympathetic reason " +
+      "behind it that they will share if the user asks. The user has set up a short one-on-one.",
     criteria: [
       "Named the specific behavior or pattern directly",
       "Stated the concrete impact of the behavior",
@@ -305,8 +304,9 @@ export const lessons = [
       relationship: "Works closely with the user cross-functionally",
     },
     scenarioTemplate:
-      "A combined scenario drawing on Unit 2's skills: the user needs to address a peer conflict that " +
-      "has a specific behavioral pattern and a plausible innocent explanation, without a visible guide.",
+      "A peer on an adjacent team has twice posted decisions affecting the user's team in a shared " +
+      "project channel before raising them with the user, so the user's team found out from the channel. " +
+      "There is a plausible innocent explanation. The user has grabbed time with them.",
     criteria: [
       "Named the specific pattern with a concrete example",
       "Stayed neutral in tone instead of accusatory",
@@ -447,8 +447,9 @@ export const lessons = [
       relationship: "Occasionally asks the user for cross-team help",
     },
     scenarioTemplate:
-      "A combined scenario drawing on Unit 3's skills: the user needs to say no to or renegotiate an " +
-      "unreasonable ask from a peer, without a visible guide.",
+      "A peer has asked the user's team to take on an extra data pull before their launch on Friday. " +
+      "The user's team is already committed through the end of the week and picking it up would put " +
+      "their own deadline at risk. The peer is following up on the request.",
     criteria: [
       "Clearly declined or renegotiated the ask",
       "Gave a concrete reason",
@@ -588,9 +589,9 @@ export const lessons = [
       relationship: "1 year on the team, reports to the user",
     },
     scenarioTemplate:
-      "A combined scenario drawing on Unit 4's skills: the user needs to address a performance issue " +
-      "with a direct report that has both a clear behavioral pattern and a real personal factor " +
-      "complicating it, requiring the user to balance directness with empathy without a visible guide.",
+      "A direct report's work has slipped over the past two months -- missed review deadlines, and two " +
+      "releases that shipped with errors the team caught late. The report has mentioned a difficult " +
+      "situation at home. The user has set up a one-on-one.",
     criteria: [
       "Named the specific behavior or pattern directly",
       "Stated the impact on the team or work",

@@ -154,7 +154,7 @@ export async function generateOpeningLine(lesson, scenario) {
     messages: [{ role: "user", content: userMessage }],
     schema,
     toolName: "submit_opening_line",
-    maxTokens: 256,
+    maxTokens: 700,
   });
 
   return result.opening_line;
@@ -326,9 +326,21 @@ export async function generateFeedback({
 
   const system =
     "You write brief, constructive feedback for a workplace-conversation training app, based on a " +
-    "completed practice conversation. Be specific and human, not generic. 1-2 sentences only. If the " +
+    "completed practice conversation. Be specific and human, not generic. If the " +
     "user's respect/empathy grades were mixed or trended low (see below), work that into the feedback " +
     "specifically, not just the content checklist.\n\n" +
+    "You also grade the conversation on three skills, judging the WHOLE transcript rather than any " +
+    "single turn:\n" +
+    "- clarity: did they say what they meant, plainly and with specifics, rather than hinting or " +
+    "generalising?\n" +
+    "- empathy: did they make room for how the other person saw it, proportionate to how loaded the " +
+    "moment was?\n" +
+    "- resolution: did the conversation land somewhere concrete, rather than trailing off or ending " +
+    "on vague agreement?\n\n" +
+    "For each, give a level and a note. The note is the part the user actually reads, so it must " +
+    "point at something that happened in THIS conversation -- quote or paraphrase what they did or " +
+    "failed to do. One sentence, max ~15 words. Never write a generic line that would fit any " +
+    "conversation, and never name or restate the guide criteria.\n\n" +
     WRITING_STYLE;
 
   const userMessage =
@@ -343,12 +355,40 @@ export async function generateFeedback({
     `Overall resolution: ${resolution}\n\n` +
     "Write a 1-2 sentence feedback summary covering what went well and what to improve next time.";
 
+  const skillProperty = (name, what) => ({
+    type: "object",
+    description: `How the conversation went on ${name}: ${what}`,
+    properties: {
+      level: {
+        type: "string",
+        enum: ["needs_work", "developing", "solid", "strong"],
+        description: "Judged over the whole conversation, not a single turn.",
+      },
+      note: {
+        type: "string",
+        description:
+          "One sentence, max ~15 words, pointing at something specific that happened in this " +
+          "conversation. Not a restatement of the level or of the guide criteria.",
+      },
+    },
+    required: ["level", "note"],
+  });
+
   const schema = {
     type: "object",
     properties: {
       feedback_line: { type: "string", description: "1-2 sentence feedback summary." },
+      skills: {
+        type: "object",
+        properties: {
+          clarity: skillProperty("clarity", "saying what they meant, plainly and with specifics"),
+          empathy: skillProperty("empathy", "making room for how the other person saw it"),
+          resolution: skillProperty("resolution", "landing somewhere concrete"),
+        },
+        required: ["clarity", "empathy", "resolution"],
+      },
     },
-    required: ["feedback_line"],
+    required: ["feedback_line", "skills"],
   };
 
   const result = await structuredCall({
@@ -364,6 +404,7 @@ export async function generateFeedback({
     deductionCount,
     empathySummary,
     resolution,
+    skills: result.skills,
     feedbackLine: result.feedback_line,
   };
 }
