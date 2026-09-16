@@ -55,11 +55,6 @@ struct ConversationCriterion: Identifiable, Hashable {
     let text: String
 }
 
-struct ScriptedReply: Identifiable, Hashable {
-    let id = UUID()
-    let text: String
-}
-
 struct ConversationMessage: Identifiable, Hashable {
     enum Speaker: Hashable {
         case marcus
@@ -81,10 +76,127 @@ struct ConversationMessage: Identifiable, Hashable {
 // A real character from the conversation-engine server (name/role only --
 // there's no per-character art yet, so the UI currently falls back to the
 // Marcus avatar as a placeholder regardless of the actual character).
+// The three dimensions every conversation is judged on. Regular lessons also
+// show their own three specific criteria; checkpoints are graded on these
+// alone, because a checkpoint that hands over its criteria is an answer key.
+//
+// The blurbs describe the dimension, never the lesson's criteria -- naming
+// "clarity" is fair warning, naming "state the concrete impact" is the test.
+enum PoiseSkill: String, CaseIterable, Identifiable {
+    case clarity
+    case empathy
+    case resolution
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .clarity: return "Clarity"
+        case .empathy: return "Empathy"
+        case .resolution: return "Resolution"
+        }
+    }
+
+    var blurb: String {
+        switch self {
+        case .clarity: return "Say what you mean, plainly and specifically."
+        case .empathy: return "Make room for how the other person sees it."
+        case .resolution: return "Land somewhere concrete before you finish."
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .clarity: return "text.alignleft"
+        case .empathy: return "heart.fill"
+        case .resolution: return "flag.checkered"
+        }
+    }
+
+    var accent: Color {
+        switch self {
+        case .clarity: return .poiseBlueDark
+        case .empathy: return .poisePurple
+        case .resolution: return .poiseMintDark
+        }
+    }
+}
+
+// How well a conversation went on one PoiseSkill. Four levels rather than
+// three: with an odd number, a grader leans on the middle one.
+enum SkillLevel: Int, CaseIterable {
+    case needsWork = 0
+    case developing = 1
+    case solid = 2
+    case strong = 3
+
+    var title: String {
+        switch self {
+        case .needsWork: return "Needs work"
+        case .developing: return "Developing"
+        case .solid: return "Solid"
+        case .strong: return "Strong"
+        }
+    }
+
+    // Ink colours for the level chips, kept separate from the general palette
+    // because they have a job the palette tokens don't: they are 11pt text on
+    // a 13% wash of themselves, and they must be told apart at a glance.
+    //
+    // The palette versions all failed on both counts -- measured on the chip
+    // as rendered: orange 2.89:1, gold 2.58:1, blue 3.46:1, mint 3.23:1
+    // against the 4.5:1 that size needs. Orange and gold were also only 20
+    // degrees apart in hue, so "Needs work" and "Developing" read as the same
+    // colour. These are the least-darkened versions of each hue that clear
+    // 4.5:1, with red replacing orange to put 42 degrees between the bottom
+    // two levels.
+    // How full the checkpoint chart's bar is. Four tiers over a bar that can
+    // also be empty, so the ladder is 25 / 50 / 75 / 100 with 0 reserved for
+    // a checkpoint that hasn't been taken.
+    var barFraction: Double {
+        Double(rawValue + 1) / Double(SkillLevel.allCases.count)
+    }
+
+    var tint: Color {
+        switch self {
+        case .needsWork: return Color(red: 0.698, green: 0.176, blue: 0.176)
+        case .developing: return Color(red: 0.518, green: 0.388, blue: 0.082)
+        case .solid: return Color(red: 0.180, green: 0.416, blue: 0.678)
+        case .strong: return Color(red: 0.133, green: 0.459, blue: 0.361)
+        }
+    }
+}
+
 struct EngineCharacter: Codable, Hashable {
     let name: String
     let role: String
     let relationship: String?
+
+    // `role` is written for the language model's benefit -- "Peer, coworker on
+    // an adjacent team" -- which is far too long for the name chip on the
+    // briefing screen. Everything before the first comma is the role proper;
+    // what follows is scenario colour that already belongs in the briefing
+    // text. Derived rather than stored because in live mode the character
+    // comes from the conversation engine, so this has to cope with strings
+    // the app has never seen, not just the five in the mock library.
+    var shortRole: String {
+        let head = role.split(separator: ",").first.map(String.init) ?? role
+        let cleaned = head
+            .trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: "The user's own ", with: "Your ")
+            .replacingOccurrences(of: "The user's ", with: "Your ")
+        // Backstop for anything the engine sends without a comma: keep it to
+        // two words rather than letting a sentence into the chip. Drop a
+        // leading article first, so a long description reduces to "Senior
+        // stakeholder" rather than "A senior".
+        var words = cleaned.split(separator: " ")
+        guard words.count > 3 else { return cleaned }
+        if let first = words.first, ["a", "an", "the"].contains(first.lowercased()) {
+            words.removeFirst()
+        }
+        let short = words.prefix(2).joined(separator: " ")
+        return short.prefix(1).uppercased() + short.dropFirst()
+    }
 }
 
 struct ScoreResult {
@@ -106,55 +218,14 @@ struct ChecklistItem: Identifiable {
     let state: State
 }
 
-struct ProgressSnapshot {
-    let streakDays: Int
-    let xp: Int
-    let level: Int
-    let levelProgress: Double
-    let weeklyGoal: Int
-    let weeklyCompleted: Int
-    let xpHistory: [Int]
-    let calendarDays: [PracticeDay]
-    let skillRates: [SkillRate]
-    let badges: [String]
-}
-
-extension ProgressSnapshot {
-    // The seven days ending today. calendarDays is a 28-day window, so slice
-    // back from today rather than assuming the last seven entries are it.
-    var weekEndingToday: [PracticeDay] {
-        guard !calendarDays.isEmpty else { return [] }
-        let end = (calendarDays.lastIndex { $0.isToday } ?? calendarDays.count - 1) + 1
-        return Array(calendarDays[max(0, end - 7)..<end])
-    }
-
-    // Counted from the same days the weekly card draws, so a summary of this
-    // number can never contradict the marks underneath it. Deliberately not
-    // `weeklyCompleted`, which is a separate hardcoded mock value that
-    // disagrees with the calendar.
-    var practicedThisWeek: Int { weekEndingToday.filter(\.practiced).count }
-
-    var remainingThisWeek: Int { max(0, weeklyGoal - practicedThisWeek) }
-}
-
 struct PracticeDay: Identifiable {
     let id = UUID()
-    let day: Int
-    let weekday: String
+    let day: Int?
     let practiced: Bool
     let isToday: Bool
+    // Single-letter column label, used by the Learn page's week strip. Empty
+    // for the calendar grid, which labels its columns once in a header row
+    // rather than per cell.
+    var weekday: String = ""
 }
 
-struct SkillRate: Identifiable {
-    let id = UUID()
-    let label: String
-    let rate: Double
-}
-
-struct UserProfile {
-    let name: String
-    let initial: String
-    let level: Int
-    let subtitle: String
-    let plan: String
-}
