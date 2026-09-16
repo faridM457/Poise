@@ -668,10 +668,35 @@ private struct PaywallSheet: View {
                 .disabled(subscriptions.isPurchasing)
             }
 
-            Text("Cancel any time. Renews automatically until cancelled.")
+            // Apple requires the paywall to state the subscription's name,
+            // its length and its price per period, and to link Terms and
+            // Privacy. The previous line said only "Cancel any time. Renews
+            // automatically until cancelled." -- true, but missing the three
+            // facts Review checks for.
+            Text(disclosureText)
                 .font(PoiseType.caption())
                 .foregroundStyle(Color.poiseMuted)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 6) {
+                Link("Terms of Use", destination: PoiseLegal.termsURL)
+                Text("·").foregroundStyle(Color.poiseMuted)
+                Link("Privacy Policy", destination: PoiseLegal.privacyURL)
+            }
+            .font(PoiseType.caption(.bold))
+            .tint(Color.poiseBlueDark)
+
+            if RevenueCatConfig.isUsingTestStore {
+                // Development builds run against simulated purchases. Saying so
+                // is the difference between a tester reporting "the purchase
+                // did nothing" and understanding what they just used.
+                Text("Test build — purchases are simulated and nothing is charged.")
+                    .font(PoiseType.caption())
+                    .foregroundStyle(Color.poiseOrange)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(.horizontal, 24)
         .padding(.top, 14)
@@ -682,6 +707,21 @@ private struct PaywallSheet: View {
                 .fill(Color.poiseBorder.opacity(0.8))
                 .frame(height: 1)
         }
+    }
+
+    private var disclosureText: String {
+        guard !subscriptions.isPro, let package = selectedPackage else {
+            return "Manage or cancel your subscription any time in your App Store settings."
+        }
+        let price = package.storeProduct.localizedPriceString
+        let period: String
+        switch package.packageType {
+        case .annual: period = "a year"
+        case .monthly: period = "a month"
+        case .weekly: period = "a week"
+        default: period = "per period"
+        }
+        return "Poise Pro is \(price) \(period), billed through your Apple account and renewing automatically until cancelled. Cancel any time in your App Store settings."
     }
 
     private var primaryTitle: String {

@@ -8,9 +8,7 @@ struct PoiseApp: App {
         Purchases.logLevel = .debug
         #endif
 
-        Purchases.configure(
-            withAPIKey: "test_wwZMvuBadTGHkKuouqJFsMBCsxa"
-        )
+        Purchases.configure(withAPIKey: RevenueCatConfig.apiKey)
     }
 
     var body: some Scene {
