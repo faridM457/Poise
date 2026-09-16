@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 struct PoiseLogo: View {
@@ -42,8 +43,8 @@ struct PoiseTopBar: View {
                 .minimumScaleFactor(0.8)
 
             HStack(spacing: 8) {
-                PoiseStatusChip(icon: "flame.fill", value: "\(streak)", color: .poiseOrange)
-                PoiseStatusChip(icon: "bolt.fill", value: energyText, color: .poiseAmber)
+                StreakChip(streak: streak)
+                EnergyChip(energyText: energyText)
             }
             .fixedSize(horizontal: true, vertical: false)
         }
@@ -57,6 +58,157 @@ struct PoiseTopBar: View {
                 .frame(height: 1)
         }
         .accessibilityElement(children: .contain)
+    }
+}
+
+// A live countdown to the next unit of energy. Re-renders every second, and
+// when the clock runs out it asks the store to apply the regen so the balance
+// moves without waiting for the next foreground.
+struct EnergyCountdown: View {
+    @ObservedObject private var store = LearnProgressStore.shared
+    @State private var now = Date()
+
+    private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text("Next energy in")
+                .font(PoiseType.caption())
+                .foregroundStyle(Color.poiseMuted)
+            Text(store.countdownText(asOf: now) ?? "")
+                .font(PoiseType.caption(.bold))
+                .foregroundStyle(Color.poiseNavy)
+                // Digits keep a fixed width so the line doesn't jitter as it
+                // counts down.
+                .monospacedDigit()
+        }
+        .onReceive(tick) { instant in
+            now = instant
+            if let seconds = store.secondsUntilNextEnergy(asOf: instant), seconds <= 0 {
+                store.refreshRegen()
+            }
+        }
+    }
+}
+
+// Both chips behave the same way: tap for what the number means and what
+// happens next. An interactive chip beside a static one is its own kind of
+// inconsistency.
+struct StreakChip: View {
+    let streak: Int
+
+    @State private var showingDetail = false
+
+    var body: some View {
+        Button { showingDetail = true } label: {
+            PoiseStatusChip(icon: "flame.fill", value: "\(streak)", color: .poiseOrange)
+        }
+        .buttonStyle(PoisePressableStyle())
+        .accessibilityLabel("Streak, \(streak) days. Tap for details.")
+        .popover(isPresented: $showingDetail) {
+            StreakDetailPopover(streak: streak)
+                .presentationCompactAdaptation(.popover)
+                .presentationBackground(Color.white)
+        }
+    }
+}
+
+private struct StreakDetailPopover: View {
+    let streak: Int
+
+    @ObservedObject private var store = LearnProgressStore.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 7) {
+                Image(systemName: "flame.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Color.poiseOrange)
+                Text("\(streak)-day streak")
+                    .font(PoiseType.body(.bold))
+                    .foregroundStyle(Color.poiseNavy)
+            }
+
+            Text("Days in a row with at least one conversation.")
+                .font(PoiseType.caption())
+                .foregroundStyle(Color.poiseMuted)
+                .fixedSize(horizontal: false, vertical: true)
+
+            PoiseDivider()
+
+            // Says what to do next rather than threatening a loss -- the
+            // streak is a record of practice, not a thing to be punished over.
+            Text(store.practisedToday
+                 ? "Done for today. Come back tomorrow to keep it going."
+                 : "No conversation yet today. One keeps the streak alive.")
+                .font(PoiseType.caption(.bold))
+                .foregroundStyle(Color.poiseNavy)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(width: 240)
+    }
+}
+
+// The energy chip is tappable. iOS has no hover, so the equivalent of a
+// tooltip is a popover -- and the chip is where people already look when they
+// want to know how much is left, which makes it the right place to explain
+// what the number means and when the next one arrives.
+struct EnergyChip: View {
+    let energyText: String
+
+    @ObservedObject private var store = LearnProgressStore.shared
+    @State private var showingDetail = false
+
+    var body: some View {
+        Button { showingDetail = true } label: {
+            PoiseStatusChip(icon: "bolt.fill", value: energyText, color: .poiseAmber)
+        }
+        .buttonStyle(PoisePressableStyle())
+        .accessibilityLabel("Energy, \(energyText). Tap for details.")
+        .popover(isPresented: $showingDetail) {
+            EnergyDetailPopover(store: store)
+                .presentationCompactAdaptation(.popover)
+                // Without this the popover keeps the system's translucent
+                // material, which blurs the page through it -- nothing else in
+                // this app is transparent, so it read as a different design.
+                .presentationBackground(Color.white)
+        }
+    }
+}
+
+private struct EnergyDetailPopover: View {
+    @ObservedObject var store: LearnProgressStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 7) {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Color.poiseAmber)
+                Text("\(store.energyRemaining) of \(store.energyCap) energy")
+                    .font(PoiseType.body(.bold))
+                    .foregroundStyle(Color.poiseNavy)
+            }
+
+            // Was "nothing is locked, you can still practice", from when
+            // starting at zero was merely discouraged. It is a hard block now
+            // (see LiveLessonFlowView.startRoleplay), so saying otherwise
+            // would set the user up for a refusal.
+            Text(store.energyRemaining > 0
+                 ? "Each conversation you start uses one. You get one back every \(store.regenHours) hours."
+                 : "You are out. Reading a lesson is still free — starting a conversation needs one.")
+                .font(PoiseType.caption())
+                .foregroundStyle(Color.poiseMuted)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if store.secondsUntilNextEnergy() != nil {
+                PoiseDivider()
+                EnergyCountdown()
+            }
+        }
+        .padding(16)
+        .frame(width: 240)
     }
 }
 
@@ -167,7 +319,7 @@ struct PoiseDivider: View {
 }
 
 // Tappable cards acknowledge the press with a quiet scale rather than a
-// highlight -- TactileButtonStyle's raised edge is reserved for real buttons
+// highlight -- a raised edge is reserved for real buttons
 // in the lesson flow.
 struct PoisePressableStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
@@ -177,9 +329,9 @@ struct PoisePressableStyle: ButtonStyle {
     }
 }
 
-// The flat primary action used by the redesigned tabs: a solid capsule, no
-// raised lower edge. TactileButtonStyle stays in the lesson flow, where the
-// chunkier feel belongs.
+// The app's only primary action: a solid capsule, no raised lower edge. It is
+// used by every CTA in every flow -- the Learn hero, the lesson flow, the
+// modal and the paywall -- so a button always reads as the same object.
 struct PoiseFlatButtonStyle: ButtonStyle {
     var fill: Color = .poiseBlueDark
     var foreground: Color = .white
@@ -320,29 +472,36 @@ struct LessonProgressHeader: View {
         HStack(spacing: 12) {
             Button(action: onExit) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 17, weight: .heavy))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Color.poiseMuted)
-                    .frame(width: 42, height: 42)
+                    .frame(width: 38, height: 38)
             }
             .accessibilityLabel("Exit lesson")
 
-            HStack(spacing: 6) {
+            // Same segmented rail as the unit cards' progress -- 6pt, poiseBlue
+            // filled, poiseTrack empty -- rather than 10pt bars on poiseSoftGray.
+            HStack(spacing: 4) {
                 ForEach(0..<total, id: \.self) { index in
                     Capsule()
-                        .fill(index < step ? Color.poiseBlue.opacity(0.85) : Color.poiseSoftGray)
-                        .frame(height: 10)
+                        .fill(index < step ? Color.poiseBlue : Color.poiseTrack)
+                        .frame(height: 6)
                 }
             }
 
-            Text(label.uppercased())
-                .font(PoiseType.caption(.heavy))
-                .foregroundStyle(Color.poiseMuted)
+            PoiseEyebrow(text: label)
                 .frame(width: 78, alignment: .trailing)
         }
         .padding(.horizontal, 16)
-        .padding(.top, 10)
-        .padding(.bottom, 6)
-        .background(Color.white)
+        .padding(.top, 8)
+        .padding(.bottom, 12)
+        // Flat canvas closed with a hairline, mirroring PoiseTopBar and the
+        // tab bar, instead of a plain white block with no edge.
+        .background(Color.poiseCanvas)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.poiseBorder.opacity(0.8))
+                .frame(height: 1)
+        }
     }
 }
 
@@ -357,5 +516,94 @@ struct InfoCard<Content: View>: View {
         content
             .padding(20)
             .poiseCard()
+    }
+}
+
+// MARK: - Modal
+
+// The app's own alert. UIKit's `.alert` arrives with system typography, system
+// corner radius and a tinted default button -- none of which are on this app's
+// ladder, so a blocking message was the one surface that looked like a
+// different product. This is the same construction as every other card here:
+// a white surface, an icon badge, the type ladder, and the app's flat button.
+//
+// Presentation is an overlay rather than a sheet so it can sit inside a
+// fullScreenCover without a second presentation fighting the first.
+struct PoiseModal<Content: View>: View {
+    let icon: String
+    let iconColor: Color
+    let title: String
+    let message: String
+    var primaryTitle: String = "Got it"
+    let onPrimary: () -> Void
+    @ViewBuilder var extra: Content
+
+    var body: some View {
+        ZStack {
+            // Scrim. Navy rather than black so it reads as this app dimming
+            // itself rather than a system overlay.
+            Color.poiseNavy.opacity(0.32)
+                .ignoresSafeArea()
+                .onTapGesture(perform: onPrimary)
+
+            VStack(spacing: 0) {
+                PoiseIconBadge(icon: icon, color: iconColor, size: 52)
+
+                Spacer().frame(height: 16)
+
+                Text(title)
+                    .font(PoiseType.headline())
+                    .foregroundStyle(Color.poiseNavy)
+                    .multilineTextAlignment(.center)
+
+                Spacer().frame(height: 8)
+
+                Text(message)
+                    .font(PoiseType.subhead())
+                    .foregroundStyle(Color.poiseMuted)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                extra
+
+                Spacer().frame(height: 20)
+
+                Button(primaryTitle, action: onPrimary)
+                    .buttonStyle(PoiseFlatButtonStyle(fullWidth: true))
+            }
+            .padding(24)
+            .frame(maxWidth: 320)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .stroke(Color.poiseBorder, lineWidth: 1.5)
+            )
+            .shadow(color: .poiseNavy.opacity(0.18), radius: 28, x: 0, y: 12)
+            .padding(.horizontal, 32)
+        }
+        .transition(.opacity)
+        .accessibilityAddTraits(.isModal)
+    }
+}
+
+extension PoiseModal where Content == EmptyView {
+    init(
+        icon: String,
+        iconColor: Color,
+        title: String,
+        message: String,
+        primaryTitle: String = "Got it",
+        onPrimary: @escaping () -> Void
+    ) {
+        self.init(
+            icon: icon,
+            iconColor: iconColor,
+            title: title,
+            message: message,
+            primaryTitle: primaryTitle,
+            onPrimary: onPrimary,
+            extra: { EmptyView() }
+        )
     }
 }

@@ -48,7 +48,12 @@ struct PoiseType {
         .system(size: 18, weight: weight, design: .rounded)
     }
 
-    static func body(_ weight: Font.Weight = .regular) -> Font {
+    // Default .medium, not .regular. SF Rounded only reads as rounded from
+    // medium upward -- at regular its terminals flatten out and prose looks
+    // like plain system text sitting next to the app's bold rounded labels.
+    // Set here rather than at a call site so every prose block in the app
+    // carries the same weight.
+    static func body(_ weight: Font.Weight = .medium) -> Font {
         .system(size: 16, weight: weight, design: .rounded)
     }
 
@@ -92,48 +97,5 @@ struct PoiseCardBackground: ViewModifier {
 extension View {
     func poiseCard(fill: Color = .white, stroke: Color = .poiseBorder, radius: CGFloat = 24) -> some View {
         modifier(PoiseCardBackground(fill: fill, stroke: stroke, radius: radius))
-    }
-}
-
-struct TactileButtonStyle: ButtonStyle {
-    var fill: Color = .poiseBlue
-    var lowerEdge: Color = .poiseBlueDark
-    var foreground: Color = .white
-    var disabled: Bool = false
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(PoiseType.body(.heavy))
-            .foregroundStyle(disabled ? Color.poiseMuted : foreground)
-            .frame(maxWidth: .infinity, minHeight: 54)
-            .background(
-                ZStack(alignment: .bottom) {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(disabled ? Color.poiseSoftGray : lowerEdge)
-                        .offset(y: configuration.isPressed ? 0 : 4)
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(disabled ? Color.poiseSoftGray : fill)
-                        .offset(y: configuration.isPressed ? 4 : 0)
-                }
-            )
-            .scaleEffect(configuration.isPressed ? 0.985 : 1)
-            .animation(.spring(response: 0.22, dampingFraction: 0.78), value: configuration.isPressed)
-    }
-}
-
-struct SecondaryPoiseButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(PoiseType.body(.heavy))
-            .foregroundStyle(Color.poiseBlueDark)
-            .frame(maxWidth: .infinity, minHeight: 52)
-            .background(Color.white)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(Color.poiseBorder, lineWidth: 1.5)
-            )
-            .shadow(color: Color.poiseNavy.opacity(configuration.isPressed ? 0.02 : 0.08), radius: 6, x: 0, y: 3)
-            .scaleEffect(configuration.isPressed ? 0.985 : 1)
     }
 }
