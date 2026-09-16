@@ -154,7 +154,7 @@ export async function generateOpeningLine(lesson, scenario) {
     messages: [{ role: "user", content: userMessage }],
     schema,
     toolName: "submit_opening_line",
-    maxTokens: 700,
+    maxTokens: 256,
   });
 
   return result.opening_line;
@@ -396,7 +396,9 @@ export async function generateFeedback({
     messages: [{ role: "user", content: userMessage }],
     schema,
     toolName: "submit_feedback",
-    maxTokens: 256,
+    // The response carries feedback_line plus three skill notes. 256 was the
+    // budget from when it returned the line alone.
+    maxTokens: 700,
   });
 
   return {
