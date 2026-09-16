@@ -187,14 +187,38 @@ final class LearnProgressStore: ObservableObject {
         UserDefaults.standard.set(data, forKey: Self.sessionsKey)
     }
 
-    // No chronological gating: every lesson in every unit is startable at any
-    // time, in any order. These are workplace scenarios a manager picks by
-    // what they're facing this week, not a language course where lesson 4
-    // presumes lesson 3 -- so `.locked` is never returned. Completion is still
-    // tracked (it drives per-unit progress and the weekly activity card), it
-    // just no longer gates anything.
+    // Ordinary lessons are never gated: they are workplace scenarios a manager
+    // picks by what they're facing this week, not a language course where
+    // lesson 4 presumes lesson 3.
+    //
+    // A checkpoint is the exception, because it is not a scenario you're
+    // facing -- it's the unit's assessment, synthesized from two specific
+    // lessons in it, and it deliberately withholds its criteria (no guide
+    // screen, skill tiers instead of a checklist). That design only works if
+    // you've done the lessons. Someone who jumps straight in gets an unguided
+    // conversation scored on three dimensions nobody ever explained, and
+    // concludes the app is vague rather than that they skipped ahead.
+    //
+    // Completion is checked first and deliberately: a checkpoint that has been
+    // passed stays unlocked forever, even if a lesson is later added to the
+    // unit. Re-locking something already earned would read as losing it.
     func state(for lessonID: String) -> LessonNodeState {
-        completedLessonIDs.contains(lessonID) ? .completed : .available
+        if completedLessonIDs.contains(lessonID) { return .completed }
+        guard let content = PoiseLessonLibrary.all.first(where: { $0.id == lessonID }),
+              content.isCheckpoint
+        else { return .available }
+        return unlockProgress(forUnit: content.unitNumber).isUnlocked ? .available : .locked
+    }
+
+    // How close a unit's checkpoint is to unlocking. Returned rather than a
+    // bare Bool so the locked row can say what remains ("2 of 4 done") instead
+    // of showing a padlock with no way to read it.
+    func unlockProgress(forUnit unitNumber: Int) -> (done: Int, total: Int, isUnlocked: Bool) {
+        let lessons = PoiseLessonLibrary.all.filter { $0.unitNumber == unitNumber && !$0.isCheckpoint }
+        let done = lessons.filter { completedLessonIDs.contains($0.id) }.count
+        // An empty unit would otherwise report locked forever with nothing the
+        // user could do about it.
+        return (done, lessons.count, lessons.isEmpty || done == lessons.count)
     }
 
     // Records a finished conversation. A replay appends a second record
@@ -336,7 +360,13 @@ final class LearnProgressStore: ObservableObject {
 
         for offset in 0..<allUnits.count {
             let unit = allUnits[(startIndex + offset) % allUnits.count]
-            if let index = unit.lessons.firstIndex(where: { $0.state != .completed }) {
+            // `.available`, not merely "not completed" -- a locked checkpoint
+            // must never be offered as the next thing to do. With checkpoints
+            // sorted last in every unit the two are equivalent today (the
+            // checkpoint only becomes the first unfinished node once every
+            // lesson before it is done, which is exactly the unlock
+            // condition), but this stays correct if the order ever changes.
+            if let index = unit.lessons.firstIndex(where: { $0.state == .available }) {
                 return (unit, unit.lessons[index], index + 1)
             }
         }

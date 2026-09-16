@@ -15,9 +15,10 @@ import UIKit
 //     in a small icon badge and that unit's progress fill. Card backgrounds
 //     stay neutral so the units don't read as different components.
 //
-// Nothing on this page is ever locked (see LearnProgressStore.state(for:)):
-// units are a menu, not a ladder, so every state here is either "not started
-// yet", "in progress" or "complete".
+// Units are a menu, not a ladder: every ordinary lesson is startable at any
+// time, in any order. The one exception is a unit's checkpoint, which stays
+// locked until that unit's lessons are done -- see LearnProgressStore's
+// state(for:) for why the "pick what you need" rule doesn't extend to it.
 struct LearnView: View {
     @ObservedObject private var store = LearnProgressStore.shared
     @State private var activeLesson: LessonNode?
@@ -30,11 +31,15 @@ struct LearnView: View {
     // has actually gone away -- setting a fullScreenCover while a sheet is
     // dismissing drops the presentation -- so it waits for onDismiss.
     @State private var pendingLesson: LessonNode?
-    // Set when the user taps the continue button at 0 energy -- surfaces a
-    // dismissable warning (testing purposes only, never a hard gate; see
-    // LearnProgressStore.markCompleted) rather than blocking the tap.
 
     private var units: [LessonUnit] { store.units }
+
+    // Unit id is "unit-<n>", which is what the store keys unlock progress on.
+    private func unlockProgress(for unit: LessonUnit) -> (done: Int, total: Int) {
+        let number = Int(unit.id.dropFirst("unit-".count)) ?? 0
+        let progress = store.unlockProgress(forUnit: number)
+        return (progress.done, progress.total)
+    }
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -54,6 +59,7 @@ struct LearnView: View {
                 unit: unit,
                 accent: accentColor(for: units.firstIndex { $0.id == unit.id } ?? 0),
                 upNextLessonID: store.upNext?.lesson.id,
+                unlockProgress: unlockProgress(for: unit),
                 onSelect: { lesson in
                     pendingLesson = lesson
                     detailUnit = nil
@@ -381,9 +387,11 @@ private struct UnitDetailSheet: View {
     let unit: LessonUnit
     let accent: Color
     let upNextLessonID: String?
+    let unlockProgress: (done: Int, total: Int)
     let onSelect: (LessonNode) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @State private var lockedLesson: LessonNode?
 
     private var completedCount: Int {
         unit.lessons.filter { $0.state == .completed }.count
@@ -406,7 +414,8 @@ private struct UnitDetailSheet: View {
                                     number: index + 1,
                                     accent: accent,
                                     isUpNext: lesson.id == upNextLessonID,
-                                    action: { onSelect(lesson) }
+                                    unlockProgress: lesson.state == .locked ? unlockProgress : nil,
+                                    action: { select(lesson) }
                                 )
                             }
                         }
@@ -419,6 +428,39 @@ private struct UnitDetailSheet: View {
             .padding(.top, 20)
         }
         .background(Color.poiseCanvas.ignoresSafeArea())
+        .overlay {
+            if let lockedLesson {
+                PoiseModal(
+                    icon: "lock.fill",
+                    iconColor: .poiseBlueDark,
+                    title: "Finish the unit first",
+                    message: lockedMessage(for: lockedLesson),
+                    primaryTitle: "Got it",
+                    onPrimary: { withAnimation(.snappy(duration: 0.22)) { self.lockedLesson = nil } }
+                )
+            }
+        }
+    }
+
+    // A locked checkpoint never reaches onSelect, so it can never open the
+    // flow or spend energy -- it explains itself instead of failing silently.
+    private func select(_ lesson: LessonNode) {
+        guard lesson.state != .locked else {
+            withAnimation(.snappy(duration: 0.22)) { lockedLesson = lesson }
+            return
+        }
+        onSelect(lesson)
+    }
+
+    // Says why rather than just that. The checkpoint withholds its criteria on
+    // purpose, so taking it early isn't a shortcut -- it's a worse version of
+    // the exercise, and that's the part worth explaining.
+    private func lockedMessage(for lesson: LessonNode) -> String {
+        let remaining = max(0, unlockProgress.total - unlockProgress.done)
+        let countLine = remaining == 1
+            ? "One lesson to go."
+            : "\(remaining) lessons to go."
+        return "This checkpoint combines what the unit's lessons teach, and it doesn't show you its criteria — so it only works once you've practised them. \(countLine)"
     }
 
     private var header: some View {
@@ -465,9 +507,13 @@ private struct LessonRow: View {
     let number: Int
     let accent: Color
     let isUpNext: Bool
+    // Only set for a locked checkpoint: how many of the unit's lessons are
+    // done, so the row can say what remains rather than just refusing.
+    let unlockProgress: (done: Int, total: Int)?
     let action: () -> Void
 
     private var isCompleted: Bool { lesson.state == .completed }
+    private var isLocked: Bool { lesson.state == .locked }
 
     var body: some View {
         Button(action: action) {
@@ -477,11 +523,20 @@ private struct LessonRow: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(lesson.displayTitle)
                         .font(PoiseType.body(.bold))
-                        .foregroundStyle(Color.poiseNavy)
+                        // Locked rows drain to muted rather than going
+                        // half-opacity: the app's other unavailable states
+                        // (locked badges) do the same, and a dimmed row reads
+                        // as broken rendering rather than as a state.
+                        .foregroundStyle(isLocked ? Color.poiseMuted : Color.poiseNavy)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    if isUpNext {
+                    if isLocked {
+                        Text(unlockHint)
+                            .font(PoiseType.caption())
+                            .foregroundStyle(Color.poiseMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else if isUpNext {
                         PoiseEyebrow(text: "Up next", color: .poiseBlueDark)
                     } else if isCompleted {
                         Text("Completed")
@@ -491,9 +546,11 @@ private struct LessonRow: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                DurationLabel(minutes: lesson.estimatedMinutes)
+                if !isLocked {
+                    DurationLabel(minutes: lesson.estimatedMinutes)
+                }
 
-                Image(systemName: "chevron.right")
+                Image(systemName: isLocked ? "lock.fill" : "chevron.right")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(Color.poiseMuted)
             }
@@ -502,19 +559,37 @@ private struct LessonRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PoisePressableStyle())
-        .accessibilityLabel("Lesson \(number), \(lesson.title)\(isCompleted ? ", completed" : "")")
+        .accessibilityLabel(accessibilityText)
+    }
+
+    // Names the requirement and the progress toward it. A bare padlock tells
+    // the user they can't do something without telling them how to fix it.
+    private var unlockHint: String {
+        guard let unlockProgress, unlockProgress.total > 0 else {
+            return "Finish this unit's lessons to unlock"
+        }
+        return "Finish the \(unlockProgress.total) lessons in this unit · \(unlockProgress.done) of \(unlockProgress.total) done"
+    }
+
+    private var accessibilityText: String {
+        if isLocked { return "Lesson \(number), \(lesson.title), locked. \(unlockHint)" }
+        return "Lesson \(number), \(lesson.title)\(isCompleted ? ", completed" : "")"
     }
 
     // The row's leading slot is always the same 38pt square: a checkmark once
-    // the lesson is done, its position in the unit otherwise.
+    // the lesson is done, a padlock while it's gated, its position otherwise.
     private var marker: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 38 * 0.3, style: .continuous)
-                .fill(isCompleted ? Color.poiseMintDark.opacity(0.13) : accent.opacity(0.13))
+                .fill(markerFill)
             if isCompleted {
                 Image(systemName: "checkmark")
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(Color.poiseMintDark)
+            } else if isLocked {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Color.poiseMuted)
             } else {
                 Text("\(number)")
                     .font(PoiseType.body(.bold))
@@ -522,6 +597,12 @@ private struct LessonRow: View {
             }
         }
         .frame(width: 38, height: 38)
+    }
+
+    private var markerFill: Color {
+        if isCompleted { return Color.poiseMintDark.opacity(0.13) }
+        if isLocked { return Color.poiseTrack.opacity(0.7) }
+        return accent.opacity(0.13)
     }
 }
 
