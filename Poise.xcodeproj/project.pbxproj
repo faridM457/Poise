@@ -121,6 +121,7 @@
 		115E03A73055171A00442C82 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
+				ORGANIZATIONNAME = "Saper Solutions";
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2660;
 				LastUpgradeCheck = 2660;
@@ -320,7 +321,7 @@
 				MARKETING_VERSION = 1.0;
 				"OTHER_LDFLAGS[sdk=iphoneos*]" = "-lc++";
 				"OTHER_LDFLAGS[sdk=iphonesimulator*]" = "-lc++";
-				PRODUCT_BUNDLE_IDENTIFIER = com.faridmsaju.Poise;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sapersolutions.poise;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
@@ -369,7 +370,7 @@
 				MARKETING_VERSION = 1.0;
 				"OTHER_LDFLAGS[sdk=iphoneos*]" = "-lc++";
 				"OTHER_LDFLAGS[sdk=iphonesimulator*]" = "-lc++";
-				PRODUCT_BUNDLE_IDENTIFIER = com.faridmsaju.Poise;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sapersolutions.poise;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
