@@ -1,8 +1,10 @@
 import SwiftUI
+import RevenueCatUI
 
 struct ProfileView: View {
     let profile: UserProfile
 
+    @Environment(SubscriptionState.self) private var subscriptionState
     @State private var voicePractice = false
     @State private var videoRecording = false
     @State private var saveRecordings = false
@@ -25,7 +27,9 @@ struct ProfileView: View {
                     }
 
                     ProfileSummary(profile: profile)
-                    ProCard { showPaywall = true }
+                    ProCard(isPro: subscriptionState.isPro, isLoading: subscriptionState.isLoading) {
+                        showPaywall = true
+                    }
                     PrivacyCard(voicePractice: $voicePractice, videoRecording: $videoRecording, saveRecordings: $saveRecordings)
                     SettingsCard(soundEffects: $soundEffects)
                 }
@@ -33,7 +37,25 @@ struct ProfileView: View {
             }
         }
         .sheet(isPresented: $showPaywall) {
-            MockPaywallSheet()
+            RevenueCatPaywallSheet()
+                .environment(subscriptionState)
+        }
+        .alert(
+            "Poise Pro",
+            isPresented: Binding(
+                get: { subscriptionState.errorMessage != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        subscriptionState.clearError()
+                    }
+                }
+            )
+        ) {
+            Button("OK") {
+                subscriptionState.clearError()
+            }
+        } message: {
+            Text(subscriptionState.errorMessage ?? "")
         }
     }
 }
@@ -67,29 +89,48 @@ private struct ProfileSummary: View {
 }
 
 private struct ProCard: View {
+    let isPro: Bool
+    let isLoading: Bool
     let onExplore: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Free plan".uppercased())
+            Text((isPro ? "Poise Pro" : "Free plan").uppercased())
                 .font(PoiseType.caption(.heavy))
                 .foregroundStyle(Color.poiseBlueDark.opacity(0.72))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
                 .background(Color.white.opacity(0.65))
                 .clipShape(Capsule())
-            Text("More room to practice.")
+            Text(isPro ? "Poise Pro — Active" : "More room to practice.")
                 .font(PoiseType.title())
                 .foregroundStyle(Color.poiseNavy)
-            Text("Unlock every unit, unlimited rehearsals, and deeper insights as they become available.")
+            Text(isPro ? "Every available practice feature is unlocked for this account." : "Unlock every unit, unlimited rehearsals, and deeper insights as they become available.")
                 .font(PoiseType.body())
                 .foregroundStyle(Color.poiseMuted)
                 .lineSpacing(4)
-            Button(action: onExplore) {
-                PrimaryButtonLabel("Explore Poise Pro")
+            if isPro {
+                Label("Active entitlement", systemImage: "checkmark.seal.fill")
+                    .font(PoiseType.body(.heavy))
+                    .foregroundStyle(Color.poiseMintDark)
+                    .accessibilityLabel("Poise Pro is active")
+            } else {
+                Button(action: onExplore) {
+                    if isLoading {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                                .tint(.white)
+                            Text("Checking status")
+                                .font(PoiseType.body(.heavy))
+                        }
+                        .frame(maxWidth: .infinity)
+                    } else {
+                        PrimaryButtonLabel("Explore Poise Pro")
+                    }
+                }
+                .buttonStyle(TactileButtonStyle())
+                .accessibilityLabel("Explore Poise Pro")
             }
-            .buttonStyle(TactileButtonStyle())
-            .accessibilityLabel("Explore Poise Pro")
         }
         .padding(22)
         .poiseCard(fill: .poisePaleBlue, stroke: Color.poiseBlue.opacity(0.16), radius: 26)
@@ -192,40 +233,71 @@ private struct SettingsRow: View {
     }
 }
 
-private struct MockPaywallSheet: View {
+private struct RevenueCatPaywallSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(SubscriptionState.self) private var subscriptionState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 38, weight: .bold))
-                    .foregroundStyle(Color.poiseGold)
-                Spacer()
-                Button("Done") { dismiss() }
-                    .font(PoiseType.body(.heavy))
-                    .foregroundStyle(Color.poiseBlueDark)
+        NavigationStack {
+            PaywallView(displayCloseButton: true)
+                .onPurchaseCompleted { customerInfo in
+                    Task {
+                        await subscriptionState.refreshAfterPurchaseOrRestore(with: customerInfo)
+                        if subscriptionState.isPro {
+                            dismiss()
+                        }
+                    }
+                }
+                .onPurchaseCancelled {
+                    dismiss()
+                }
+                .onPurchaseFailure { error in
+                    subscriptionState.handlePurchaseFailure(error)
+                }
+                .onRestoreCompleted { customerInfo in
+                    Task {
+                        await subscriptionState.refreshAfterPurchaseOrRestore(with: customerInfo)
+                        if subscriptionState.isPro {
+                            dismiss()
+                        }
+                    }
+                }
+                .onRestoreFailure { error in
+                    subscriptionState.handleRestoreFailure(error)
+                }
+                .onRequestedDismissal {
+                    dismiss()
+                }
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Done") {
+                            dismiss()
+                        }
+                        .font(PoiseType.body(.heavy))
+                        .foregroundStyle(Color.poiseBlueDark)
+                        .accessibilityLabel("Dismiss Poise Pro paywall")
+                    }
+                }
+                .task {
+                    await subscriptionState.refresh()
+                }
+                .alert(
+                    "Poise Pro",
+                    isPresented: Binding(
+                        get: { subscriptionState.errorMessage != nil },
+                        set: { isPresented in
+                            if !isPresented {
+                                subscriptionState.clearError()
+                            }
+                        }
+                    )
+                ) {
+                    Button("OK") {
+                        subscriptionState.clearError()
+                    }
+                } message: {
+                    Text(subscriptionState.errorMessage ?? "")
+                }
             }
-            Text("Poise Pro preview")
-                .font(PoiseType.largeTitle())
-                .foregroundStyle(Color.poiseNavy)
-            Text("A future subscription could include unlimited rehearsals, advanced practice packs, and richer consent-based insights.")
-                .font(PoiseType.body())
-                .foregroundStyle(Color.poiseMuted)
-                .lineSpacing(5)
-            VStack(alignment: .leading, spacing: 12) {
-                Label("No purchase flow in this prototype", systemImage: "checkmark.circle.fill")
-                Label("No StoreKit or RevenueCat integration", systemImage: "checkmark.circle.fill")
-                Label("No account or payment information collected", systemImage: "checkmark.circle.fill")
-            }
-            .font(PoiseType.body(.bold))
-            .foregroundStyle(Color.poiseNavy)
-            Spacer()
-            Button("Close") { dismiss() }
-                .buttonStyle(TactileButtonStyle())
-                .accessibilityLabel("Close Poise Pro preview")
-        }
-        .padding(24)
-        .background(Color.poiseBackground)
     }
 }
