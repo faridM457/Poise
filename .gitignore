@@ -69,3 +69,6 @@ Poise/Resources/CharacterAnimations/*.mp4
 
 # OS junk
 .DS_Store
+
+# Local TTS voice-test renders
+conversation-engine/tts-test-output/
