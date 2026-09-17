@@ -2,7 +2,6 @@ import {
   BedrockRuntimeClient,
   ConverseCommand,
 } from "@aws-sdk/client-bedrock-runtime";
-import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
 import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
 
 // Claude on Amazon Bedrock.
@@ -62,7 +61,12 @@ const EXPECTED_ACCOUNT_ID = process.env.AWS_EXPECTED_ACCOUNT_ID;
 
 function credentialSource() {
   if (PROFILE) {
-    return { credentials: fromNodeProviderChain({ profile: PROFILE }), label: `profile "${PROFILE}"` };
+    // The SDK's own node provider chain already honours AWS_PROFILE, so no
+    // extra credential-provider package is needed -- and pulling one in made
+    // importing this module hang indefinitely. The chain is only reached here
+    // because a profile was named explicitly, which is the whole point: it
+    // cannot silently land on [default].
+    return { credentials: undefined, label: `profile "${PROFILE}"` };
   }
   if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
     return {
