@@ -43,6 +43,9 @@ final class LiveLessonViewModel: ObservableObject {
     @Published private(set) var ended = false
     @Published private(set) var resolution: String?
     @Published private(set) var feedback: FeedbackResponse?
+    // Issued by the server on turn 1 when the conversation is charged; must be
+    // sent on every later turn and on feedback, or the server refuses them.
+    private var conversationToken: String?
     @Published var errorMessage: String?
 
     private var scenario: EngineScenario?
@@ -225,8 +228,11 @@ final class LiveLessonViewModel: ObservableObject {
                 history: historyBeforeThisTurn,
                 metCriteria: metCriteria,
                 turnNumber: turnNumber,
-                userResponse: trimmed
+                userResponse: trimmed,
+                conversationToken: conversationToken
             )
+            if let token = result.conversationToken { conversationToken = token }
+            if let energy = result.energy { LearnProgressStore.shared.applyServerEnergy(energy) }
             await presentNPCMessage(ConversationMessage(speaker: .npc, text: result.npc_reply, characterName: result.character))
             history.append(HistoryTurn(role: "npc", text: result.npc_reply, character: result.character))
             metCriteria = result.updated_met_criteria
@@ -258,8 +264,10 @@ final class LiveLessonViewModel: ObservableObject {
                 metCriteria: metCriteria,
                 deductionCount: deductionCount,
                 resolution: resolution,
-                empathyLevels: empathyLevels
+                empathyLevels: empathyLevels,
+                conversationToken: conversationToken
             )
+            if let energy = feedback?.energy { LearnProgressStore.shared.applyServerEnergy(energy) }
         } catch {
             errorMessage = friendlyMessage(for: error)
         }
@@ -375,7 +383,20 @@ final class LiveLessonViewModel: ObservableObject {
 
     private func friendlyMessage(for error: Error) -> String {
         if let engineError = error as? ConversationEngineError {
-            return engineError.localizedDescription
+            switch engineError {
+            case .outOfEnergy, .rateLimited:
+                // Already worded for the user by the error itself.
+                return engineError.localizedDescription
+            case .unauthorized(let message):
+                // A rejected conversation token means the server no longer
+                // recognises this run -- say what to do rather than echo the
+                // status.
+                return message.contains("Conversation token")
+                    ? "This conversation has expired. Start it again from the lesson."
+                    : "This build isn't authorised to use the conversation engine. (\(message))"
+            case .server, .invalidResponse:
+                return engineError.localizedDescription
+            }
         }
         return "Couldn't reach the local conversation-engine server at \(ConversationEngineClient.baseURL.absoluteString). " +
             "Make sure it's running (`npm start` in conversation-engine/). (\(error.localizedDescription))"

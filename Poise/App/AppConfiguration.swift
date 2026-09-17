@@ -49,6 +49,31 @@ enum RevenueCatConfig {
     }
 }
 
+enum EngineConfig {
+    // Shared key sent as X-Poise-App-Key on every engine request. It is
+    // compiled into the binary, so it filters random traffic rather than
+    // proving anything -- the server documents the same caveat. App Attest is
+    // the eventual hardening. Must match POISE_APP_KEY in the engine's .env.
+    private static let debugAppKey = "poise-dev-app-key"
+
+    // REQUIRED BEFORE ANY TESTFLIGHT OR APP STORE BUILD. Generate one with
+    // `openssl rand -hex 32` and set the same value as POISE_APP_KEY on the
+    // deployed server.
+    private static let productionAppKey = ""
+
+    static var appKey: String {
+        #if DEBUG
+        return debugAppKey
+        #else
+        precondition(
+            !productionAppKey.isEmpty,
+            "EngineConfig.productionAppKey is empty. Set it to match the server's POISE_APP_KEY before shipping."
+        )
+        return productionAppKey
+        #endif
+    }
+}
+
 enum PoiseLegal {
     // REQUIRED BEFORE SUBMISSION. App Review rejects subscription paywalls
     // whose Terms and Privacy links are missing -- and equally rejects ones

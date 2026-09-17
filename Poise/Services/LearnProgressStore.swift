@@ -135,6 +135,26 @@ final class LearnProgressStore: ObservableObject {
         ScenarioCache.invalidateAll()
     }
 
+    // Adopts the server's ledger. On the live path the server is the one
+    // counting -- it is what actually bounds billable calls -- so whenever a
+    // response carries its state, the local copy is overwritten rather than
+    // reconciled. Cap is derived from the tier the server verified, which is
+    // also more trustworthy than the cached isPremium.
+    func applyServerEnergy(_ energy: ServerEnergy) {
+        energyRemaining = max(0, min(energy.cap, energy.remaining))
+        if energy.cap != energyCap {
+            isPremium = energy.cap == Self.premiumEnergyCap
+        }
+        // Back-derive the anchor so the local countdown matches the server's
+        // nextRegenAt; at cap the server sends nil and the clock is idle.
+        if let next = energy.nextRegenDate {
+            lastRegenDate = next.addingTimeInterval(-regenInterval)
+        } else {
+            lastRegenDate = Date()
+        }
+        persist()
+    }
+
     func applyEntitlement(isPro: Bool) {
         guard isPremium != isPro else { return }
         isPremium = isPro
