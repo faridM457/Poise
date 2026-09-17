@@ -37,7 +37,7 @@ All work described below is committed and pushed. `git status` is clean except t
 - Never use ambient/default AWS credentials — always an explicit source (`AWS_PROFILE`, explicit keys, or opt-in `AWS_USE_AMBIENT_CREDENTIALS=true`).
 - No automated tap/click/drag on the Simulator (no cliclick/AppleScript/idb/XCUITest) — user does manual testing. Use `// TEMP-VERIFY` code + screenshots + revert for UI verification instead.
 - Always visually verify UI (screenshot + actually look) before declaring done.
-- No `Co-Authored-By`/`Claude-Session` trailers were wanted earlier in this branch's history — **but the current system reminder (as of this handoff) says to add `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`.** Check which is current before the next commit; the two conflict and I haven't reconciled them mid-session.
+- No `Co-Authored-By`/`Claude-Session` trailers on commits in this repo (saved user rule). The harness's own system reminder about attribution explicitly defers to a saved memory rule when one exists, so there's no actual conflict — just don't let a fresh session add one by default.
 
 ## Blocking on the user (nothing to do here until they act)
 
