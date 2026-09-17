@@ -25,6 +25,13 @@ import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
 // cross-region inference profiles whose ids carry a region prefix
 // ("us.anthropic.…"); if a plain model id is rejected as invalid, that prefix
 // is usually what is missing.
+// ENGINE_DRY_RUN=true short-circuits every model call with a schema-shaped
+// placeholder and never constructs a Bedrock or STS client. It exists so the
+// server's own behaviour -- auth, energy accounting, rate limits, token
+// handling -- can be exercised end to end without a single billable request.
+// Anything that touches this module in a test must run with it set.
+export const DRY_RUN = process.env.ENGINE_DRY_RUN === "true";
+
 const MODEL_ID =
   process.env.BEDROCK_MODEL_ID || "us.anthropic.claude-haiku-4-5-20251001-v1:0";
 
@@ -84,7 +91,7 @@ function credentialSource() {
   return null;
 }
 
-const source = credentialSource();
+const source = DRY_RUN ? null : credentialSource();
 
 const client = source
   ? new BedrockRuntimeClient({
@@ -97,7 +104,7 @@ const client = source
 let accountCheck = null;
 
 async function assertExpectedAccount() {
-  if (!EXPECTED_ACCOUNT_ID) return;
+  if (DRY_RUN || !EXPECTED_ACCOUNT_ID) return;
   if (!accountCheck) {
     accountCheck = (async () => {
       const sts = new STSClient({
@@ -140,6 +147,10 @@ export async function structuredCall({
   toolName = "submit_response",
   maxTokens = 512,
 }) {
+  if (DRY_RUN) {
+    return sanitizeStructuredOutput(dryRunValue(schema, toolName));
+  }
+
   if (!client) {
     throw new Error(
       "No Bedrock credential source configured. Set AWS_PROFILE to a named profile, or " +
@@ -207,6 +218,38 @@ export async function structuredCall({
   }
 
   return sanitizeStructuredOutput(toolUse.input);
+}
+
+// Builds a value that satisfies `schema` closely enough for every caller to
+// proceed: strings are prefixed "dry-run:" (brackets would be stripped by the sanitizer) so a dry-run
+// response is unmistakable on screen, enum arrays take the first allowed
+// value, nested objects recurse. It is not meant to look real -- it is meant
+// to be obviously synthetic while still decoding.
+function dryRunValue(schema, name = "value") {
+  if (!schema || typeof schema !== "object") return `dry-run: ${name}`;
+  if (Array.isArray(schema.enum)) return schema.enum[0];
+  switch (schema.type) {
+    case "object": {
+      const out = {};
+      for (const [key, prop] of Object.entries(schema.properties ?? {})) {
+        out[key] = dryRunValue(prop, key);
+      }
+      return out;
+    }
+    case "array": {
+      const items = schema.items ?? {};
+      // An enum-constrained array gets exactly one valid member; anything
+      // else gets one synthetic element so callers see a non-empty list.
+      return [dryRunValue(items, name)];
+    }
+    case "integer":
+    case "number":
+      return 0;
+    case "boolean":
+      return false;
+    default:
+      return `dry-run: ${name}`;
+  }
 }
 
 // Prompting alone doesn't reliably keep the model off em dashes, stage
