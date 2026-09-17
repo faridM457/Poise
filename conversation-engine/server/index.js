@@ -5,11 +5,20 @@ import { fileURLToPath } from "node:url";
 import { lessons, getLessonById } from "./lessons.js";
 import { generateScenario, generateOpeningLine, runTurn, generateFeedback } from "./engine.js";
 import { transcribeWithWhisper, STT_MODES } from "./stt.js";
+import { requireAuth, requireConversation, issueToken, verifyToken } from "./auth.js";
+import { rateLimit } from "./ratelimit.js";
+import { getState, spend, publicState } from "./energy.js";
+import { verifyPro } from "./entitlement.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "..", "public")));
+
+function requireConversationReason(req, lessonId) {
+  const reason = verifyToken(req.get("X-Poise-Conversation"), req.poiseUser, lessonId);
+  return reason ? `Conversation token ${reason}. Start the conversation again.` : null;
+}
 
 function lessonSummary(lesson) {
   const { id, unit, title, isCheckpoint, character } = lesson;
@@ -20,7 +29,23 @@ app.get("/api/lessons", (req, res) => {
   res.json(lessons.map(lessonSummary));
 });
 
-app.post("/api/scenario", async (req, res) => {
+// The lesson list above is public catalogue data. Everything below either
+// costs a model call or reads a user's energy, and requires both headers.
+app.use("/api", requireAuth);
+
+// Read-only energy state, so the app can show the server's number on launch
+// without having to start a conversation to find out.
+app.get("/api/energy", async (req, res) => {
+  try {
+    const row = await getState(req.poiseUser, { verifyPro });
+    res.json({ energy: publicState(row) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/scenario", rateLimit("scenario"), async (req, res) => {
   try {
     const lesson = getLessonById(req.body.lessonId);
     if (!lesson) return res.status(404).json({ error: "Unknown lessonId" });
@@ -33,7 +58,7 @@ app.post("/api/scenario", async (req, res) => {
   }
 });
 
-app.post("/api/opening", async (req, res) => {
+app.post("/api/opening", rateLimit("opening"), async (req, res) => {
   try {
     const lesson = getLessonById(req.body.lessonId);
     if (!lesson) return res.status(404).json({ error: "Unknown lessonId" });
@@ -53,6 +78,27 @@ app.post("/api/turn", async (req, res) => {
     if (!lesson) return res.status(404).json({ error: "Unknown lessonId" });
     const { scenario, history, metCriteria, turnNumber, userResponse } = req.body;
 
+    // Energy is charged when the conversation starts -- turn 1 -- because
+    // that is the moment tokens begin to be spent, whether or not the user
+    // sees it through. Later turns ride on the token issued here.
+    let conversationToken;
+    let energyRow;
+    if (turnNumber === 1) {
+      const charge = await spend(req.poiseUser, { verifyPro });
+      energyRow = charge.row;
+      if (!charge.ok) {
+        return res.status(402).json({
+          error: "Not enough energy to start a conversation.",
+          energy: publicState(charge.row),
+        });
+      }
+      conversationToken = issueToken(req.poiseUser, lesson.id);
+    } else {
+      const reason = requireConversationReason(req, lesson.id);
+      if (reason) return res.status(401).json({ error: reason });
+      energyRow = await getState(req.poiseUser, { verifyPro });
+    }
+
     const result = await runTurn({
       lesson,
       scenario,
@@ -62,14 +108,19 @@ app.post("/api/turn", async (req, res) => {
       userResponse,
     });
 
-    res.json({ ...result, character: lesson.character.name });
+    res.json({
+      ...result,
+      character: lesson.character.name,
+      energy: publicState(energyRow),
+      ...(conversationToken ? { conversationToken } : {}),
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post("/api/feedback", async (req, res) => {
+app.post("/api/feedback", requireConversation, async (req, res) => {
   try {
     const lesson = getLessonById(req.body.lessonId);
     if (!lesson) return res.status(404).json({ error: "Unknown lessonId" });
@@ -85,7 +136,8 @@ app.post("/api/feedback", async (req, res) => {
       empathyLevels,
     });
 
-    res.json(feedback);
+    const energyRow = await getState(req.poiseUser, { verifyPro });
+    res.json({ ...feedback, energy: publicState(energyRow) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
