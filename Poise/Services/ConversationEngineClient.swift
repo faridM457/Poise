@@ -24,6 +24,10 @@ struct ScenarioResponse: Codable {
     let scenario: EngineScenario
 }
 
+struct RedeemResponse: Codable {
+    let energy: ServerEnergy
+}
+
 struct OpeningResponse: Codable {
     let openingLine: String
     let character: String
@@ -220,10 +224,27 @@ enum ConversationEngineError: LocalizedError {
 }
 
 enum ConversationEngineClient {
-    static let baseURL = URL(string: "http://localhost:3000")!
+    // Debug points at a local server (`npm start` in conversation-engine/)
+    // for iterating without touching production. Release talks to the real
+    // deployed engine -- AWS Lightsail, same account as Bedrock, HTTPS via
+    // Let's Encrypt (see conversation-engine's deployment notes).
+    static let baseURL: URL = {
+        #if DEBUG
+        return URL(string: "http://localhost:3000")!
+        #else
+        return URL(string: "https://api.sapersolutions.com")!
+        #endif
+    }()
 
     static func fetchScenario(lessonId: String) async throws -> ScenarioResponse {
         try await post("api/scenario", body: ["lessonId": lessonId])
+    }
+
+    // Shipaton-judge code redemption (see conversation-engine/server/energy.js:
+    // redeemJudgeCode). On success the account gets a large standing energy
+    // cap; the caller should immediately adopt the returned energy state.
+    static func redeemCode(_ code: String) async throws -> RedeemResponse {
+        try await post("api/redeem", body: ["code": code])
     }
 
     static func fetchOpening(lessonId: String, scenario: EngineScenario) async throws -> OpeningResponse {
