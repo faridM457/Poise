@@ -65,7 +65,7 @@ export const lessons = [
   {
     id: "foundations-first-1-1",
     unit: "Unit 1: Foundations & Expectations",
-    title: "The First 1:1",
+    title: "Your First One-on-One",
     isCheckpoint: false,
     difficultyLabel: "cooperative",
     character: {

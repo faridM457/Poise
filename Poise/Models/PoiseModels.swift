@@ -46,6 +46,14 @@ struct LessonUnit: Identifiable {
     let id: String
     let label: String
     let title: String
+    // Shown on the Learn grid card instead of `title` when the full title
+    // wraps to a second line at the card's fixed width -- same reasoning as
+    // LessonNode.shortTitle: a shorter phrasing rather than a shrunk or
+    // truncated one, and only where the card layout actually needs it.
+    // `title` (the real unit name) is unchanged everywhere else: the detail
+    // sheet, the Up Next line, accessibility labels, and the server's own
+    // curriculum copy in conversation-engine/server/lessons.js.
+    var shortTitle: String? = nil
     let subtitle: String
     let lessons: [LessonNode]
 }

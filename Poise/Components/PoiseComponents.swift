@@ -245,10 +245,15 @@ struct PoiseStatusChip: View {
 struct PoiseEyebrow: View {
     let text: String
     var color: Color = .poiseMuted
+    // Opt-in, default unchanged (11pt): every other eyebrow in the app stays
+    // exactly as it was. Only a caller that explicitly wants it bigger --
+    // e.g. sitting beside a 44pt icon badge, where 11pt reads as an
+    // afterthought -- passes a larger size.
+    var size: CGFloat = 11
 
     var body: some View {
         Text(text.uppercased())
-            .font(PoiseType.eyebrow())
+            .font(PoiseType.eyebrow(size: size))
             .tracking(PoiseType.eyebrowTracking)
             .foregroundStyle(color)
     }
@@ -258,11 +263,24 @@ struct PoiseEyebrow: View {
 // No section gets a louder header than any other.
 struct PoiseSection<Content: View>: View {
     let title: String
+    // Opt-in, default off: a rule filling the rest of the header's row.
+    // Off everywhere by default so this stays every other section's plain
+    // eyebrow; only a caller that explicitly wants the rule gets it.
+    var showsRule: Bool = false
     @ViewBuilder var content: Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            PoiseEyebrow(text: title)
+            if showsRule {
+                HStack(spacing: 10) {
+                    PoiseEyebrow(text: title)
+                    Rectangle()
+                        .fill(Color.poiseMuted.opacity(0.4))
+                        .frame(height: 1)
+                }
+            } else {
+                PoiseEyebrow(text: title)
+            }
             content
         }
     }

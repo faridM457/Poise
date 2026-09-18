@@ -40,15 +40,21 @@ struct MockLessonContent {
 struct MockUnitInfo {
     let label: String
     let title: String
+    // See LessonUnit.shortTitle -- a shorter phrasing for the Learn grid
+    // card only, where the full title wraps to a second line the card then
+    // has to reserve blank space for even on units that fit on one line.
+    // The real title (used everywhere else, and matching the server's
+    // curriculum copy) is unchanged.
+    var shortTitle: String? = nil
     let subtitle: String
 }
 
 enum PoiseLessonLibrary {
     static let unitInfo: [Int: MockUnitInfo] = [
-        1: MockUnitInfo(label: "Unit 1 · Foundations & Expectations", title: "Foundations & Expectations", subtitle: "Start every relationship on solid ground"),
+        1: MockUnitInfo(label: "Unit 1 · Foundations & Expectations", title: "Foundations & Expectations", shortTitle: "Foundations", subtitle: "Start every relationship on solid ground"),
         2: MockUnitInfo(label: "Unit 2 · Giving Feedback", title: "Giving Feedback", subtitle: "Name what's true, and make it land"),
-        3: MockUnitInfo(label: "Unit 3 · Boundaries & Difficult Asks", title: "Boundaries & Difficult Asks", subtitle: "Say no and mean it"),
-        4: MockUnitInfo(label: "Unit 4 · Managing Up & Across", title: "Managing Up & Across", subtitle: "Hold your own with people who aren't your reports"),
+        3: MockUnitInfo(label: "Unit 3 · Boundaries & Difficult Asks", title: "Boundaries & Difficult Asks", shortTitle: "Setting Boundaries", subtitle: "Say no and mean it"),
+        4: MockUnitInfo(label: "Unit 4 · Managing Up & Across", title: "Managing Up & Across", shortTitle: "Managing Up", subtitle: "Hold your own with people who aren't your reports"),
         5: MockUnitInfo(label: "Unit 5 · Hard Conversations", title: "Hard Conversations", subtitle: "The ones you hope you never have to give"),
     ]
 
@@ -57,11 +63,11 @@ enum PoiseLessonLibrary {
         MockLessonContent(
             id: "foundations-first-1-1",
             unitNumber: 1,
-            title: "The First 1:1",
+            title: "Your First One-on-One",
             icon: "person.2.fill",
             isCheckpoint: false,
             character: EngineCharacter(name: "Dani", role: "New report", relationship: "Joined your team last week; was a peer until the reorg"),
-            briefing: "Dani starts reporting to you today. Until the reorg two weeks ago you sat at the same level, and neither of you has acknowledged that out loud yet. This is your first 1:1 and there is no problem to solve -- only the working relationship to set up.",
+            briefing: "Dani starts reporting to you today. Until the reorg two weeks ago you sat at the same level, and neither of you has acknowledged that out loud yet. This is your first one-on-one and there is no problem to solve -- only the working relationship to set up.",
             criteria: [
                 "State your role and how you'll support them",
                 "Ask what they need from a manager",

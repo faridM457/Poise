@@ -82,9 +82,9 @@ struct LearnView: View {
 
             UpNextCard(upNext: store.upNext, onStart: attemptStart)
 
-            PoiseSection(title: "Explore units") { unitGrid }
+            PoiseSection(title: "Explore units", showsRule: true) { unitGrid }
 
-            PoiseSection(title: "This week") {
+            PoiseSection(title: "This week", showsRule: true) {
                 WeeklyActivityCard(week: store.weekEndingToday, completed: store.conversationsThisWeek, goal: LearnProgressStore.weeklyGoal)
             }
 
@@ -178,7 +178,7 @@ private struct GreetingHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("\(timeOfDayGreeting), \(profile.displayName)")
+            Text("\(timeOfDayGreeting)\(profile.displayNameSuffix)")
                 .font(PoiseType.title())
                 .foregroundStyle(Color.poiseNavy)
             // Was "One conversation at a time." -- the only line on the page
@@ -213,13 +213,11 @@ private struct UpNextCard: View {
     // Narrowed from 126pt. At that width the text column was 200pt and
     // "Repeated Interruptions" measured 194.3pt -- 5.7pt of headroom, so any
     // longer lesson name wrapped. 110pt gives the column 216pt.
-    private static let photoWidth: CGFloat = 110
-    // A floor, not a fixed height. At 184 fixed, a one-line headline left a
-    // 32.7pt void between the detail line and the button -- the same reserved
-    // whitespace removed from the unit cards, and the largest unstructured
-    // gap on the page. The card now sizes to its content and only stops
-    // shrinking here, so two-line headlines still grow to fit.
-    private static let minCardHeight: CGFloat = 176
+    // Fixed, not a floor -- the banner is a flat "video tile," not something
+    // that grows with its neighboring text the way the old side-by-side
+    // layout's photo panel did. The text block below it just sizes to its
+    // own content now, with no matching-height concern to solve.
+    private static let bannerHeight: CGFloat = 175
 
     private var headlineText: String {
         upNext?.lesson.displayTitle ?? "You're all caught up"
@@ -227,85 +225,90 @@ private struct UpNextCard: View {
 
     private var detailText: String {
         guard let upNext else { return "Open any unit below to practice a conversation again." }
-        return "\(UnitLabelFormatter.unitName(upNext.unit)) · Lesson \(upNext.lessonNumber) of \(upNext.unit.lessons.count)"
+        // "Lesson N", not "Lesson N of 5" -- the count is already visible in
+        // the unit grid below, and dropping it here was part of a bigger fix:
+        // see the eyebrow's own comment for the rest of it.
+        return "\(UnitLabelFormatter.unitName(upNext.unit)) · Lesson \(upNext.lessonNumber)"
     }
 
+    // Stacked layout: wide character banner on top with the "Up next" pill
+    // rendered inside it (over the image, not as a separate container above
+    // it -- keeps the banner reading as one preview tile), then a condensed
+    // title/detail/button row below. The button moved into that row's
+    // trailing edge and shrank, so the bottom strip is a thin info bar
+    // rather than a second stacked block the way it was when the button
+    // sat full-width below the text.
     var body: some View {
-        HStack(spacing: 0) {
-            // The flexible half of an HStack that also holds a fixed-width
-            // sibling must claim its width explicitly, or it sizes to its own
-            // unwrapped ideal width and runs under the image instead of
-            // wrapping. Keep this `maxWidth: .infinity`.
-            textColumn
-                .padding(18)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            HeroCharacterPanel()
-                .frame(width: Self.photoWidth)
-        }
-        .frame(minHeight: Self.minCardHeight)
-        .background(heroBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.poiseBlue.opacity(0.14), lineWidth: 1)
-        )
-        .shadow(color: .poiseNavy.opacity(0.07), radius: 12, x: 0, y: 6)
-    }
-
-    private var textColumn: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // The estimate rides beside the pill, not inside the detail line
-            // below: that line already measures ~134pt of a ~200pt column, and
-            // appending the time would push it back into wrapping.
-            HStack(spacing: 9) {
-                PoiseEyebrow(text: upNext == nil ? "All done" : "Up next", color: .poiseBlueDark)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(Color.white.opacity(0.75))
-                    .clipShape(Capsule())
+            ZStack(alignment: .topLeading) {
+                HeroCharacterBanner()
+                    .frame(height: Self.bannerHeight)
+                    .clipped()
 
-                if let upNext {
-                    DurationLabel(minutes: upNext.lesson.estimatedMinutes)
-                }
+                Text(upNext == nil ? "All done" : "Up next")
+                    .font(PoiseType.caption(.bold))
+                    .foregroundStyle(Color.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.black.opacity(0.32))
+                    .clipShape(Capsule())
+                    .padding(12)
             }
 
-            Spacer().frame(height: 10)
+            bottomContent
+                .padding(.horizontal, 18)
+                .padding(.vertical, 10)
+        }
+        .background(Color.poiseBlue)
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .shadow(color: .poiseBlueDark.opacity(0.25), radius: 14, x: 0, y: 8)
+    }
 
-            Text(headlineText)
-                .font(PoiseType.headline())
-                .foregroundStyle(Color.poiseNavy)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
+    // The unit/lesson line stays quiet (muted opacity) against the loud
+    // title, same hierarchy this card already settled on -- only the layout
+    // moved, not that decision.
+    private static let metaOpacity: Double = 0.75
 
-            Spacer().frame(height: 4)
+    private var bottomContent: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(headlineText)
+                    // 17pt -- smaller than the 20pt this ran at when the
+                    // button sat full-width below it; with Start now a
+                    // small trailing pill on the same row, a loud title
+                    // isn't needed to carry the row on its own.
+                    .font(PoiseType.headline(size: 17))
+                    .foregroundStyle(Color.white)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            Text(detailText)
-                .font(PoiseType.subhead())
-                .foregroundStyle(Color.poiseMuted)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
+                Spacer().frame(height: 3)
 
-            Spacer(minLength: 12)
+                Text(detailText)
+                    .font(PoiseType.caption())
+                    .foregroundStyle(Color.white.opacity(Self.metaOpacity))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             if let upNext {
+                Spacer(minLength: 0)
+
+                // Thin, compact -- a bottom-right corner action rather than
+                // the full-height 44pt pill it was when it sat below the
+                // text on its own line. Still a real tap target, just not
+                // a block-level one.
                 Button(action: { onStart(upNext.lesson) }) {
-                    // Label one rung down (14pt, not 16) so it stops
-                    // competing with the 18pt lesson title two lines above --
-                    // they were 2pt apart and the button, being the darkest
-                    // object in the card, was winning the first read. The box
-                    // gets taller rather than smaller: at 40.7pt it was under
-                    // the 44pt minimum tap target.
-                    HStack(spacing: 7) {
+                    HStack(spacing: 5) {
                         Text("Start")
-                            .font(PoiseType.subhead(.bold))
+                            .font(PoiseType.caption(.bold))
                         Image(systemName: "arrow.right")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.system(size: 10, weight: .bold))
                     }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 18)
-                    .frame(minHeight: 44)
-                    .background(Color.poiseBlueDark)
+                    .foregroundStyle(Color.poiseBlueDark)
+                    .padding(.horizontal, 14)
+                    .frame(minHeight: 32)
+                    .background(Color.white)
                     .clipShape(Capsule())
                 }
                 .buttonStyle(PoisePressableStyle())
@@ -313,68 +316,21 @@ private struct UpNextCard: View {
             }
         }
     }
-
-    // Pale tint plus the soft light disc the character sits against in the
-    // mockup -- the photo panel covers the disc's right half, so only the arc
-    // beside the text shows.
-    private var heroBackground: some View {
-        ZStack(alignment: .trailing) {
-            LinearGradient(
-                colors: [Color.poiseSoftBlue, Color.poisePaleBlue],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            // Radial, not a flat fill: a solid circle left a hard arc cutting
-            // across the description text.
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [Color.white.opacity(0.6), Color.white.opacity(0)],
-                        center: .center,
-                        startRadius: 30,
-                        endRadius: 118
-                    )
-                )
-                .frame(width: 236, height: 236)
-                .offset(x: -16)
-        }
-    }
 }
 
-// The trailing slice of the hero card: fills its full height edge-to-edge,
-// clipped only by the card's own corner radius.
-private struct HeroCharacterPanel: View {
+// The card's new banner: a wide, short strip spanning the card's full
+// width, clipped only by the card's own corner radius (top corners; the
+// bottom edge butts against bottomContent, no rounding needed there).
+private struct HeroCharacterBanner: View {
     var body: some View {
         Color.clear
             .overlay {
-                Image(uiImage: CharacterCrops.heroPanel ?? UIImage())
+                Image(uiImage: CharacterCrops.heroBanner ?? UIImage())
                     .resizable()
                     .scaledToFill()
             }
             .clipped()
             .accessibilityHidden(true)
-    }
-}
-
-// How long a lesson takes, shown wherever one can be started. The number is
-// derived from the lesson's turn count (see MockLessonContent), not hand-set.
-//
-// Energy cost deliberately does NOT appear here. It lives only on the button
-// that starts the conversation (see StartLabel) -- everywhere before that the
-// user is still browsing, and a price tag on every row made the app read as
-// metered.
-private struct DurationLabel: View {
-    let minutes: Int
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "clock")
-                .font(.system(size: 11, weight: .semibold))
-            Text("\(minutes) min")
-                .font(PoiseType.caption())
-        }
-        .foregroundStyle(Color.poiseMuted)
-        .accessibilityLabel("About \(minutes) minutes")
     }
 }
 
@@ -465,8 +421,17 @@ private struct UnitDetailSheet: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top) {
-                PoiseIconBadge(icon: unit.lessons.first?.icon ?? "book.fill", color: accent, size: 44)
+            // Icon beside the eyebrow, not stacked above it -- matches
+            // UnitGridCard's badge+"UNIT N" row on the main Learn page
+            // instead of a different layout for the same pairing.
+            HStack(alignment: .center) {
+                HStack(spacing: 10) {
+                    PoiseIconBadge(icon: unit.lessons.first?.icon ?? "book.fill", color: accent, size: 44)
+                    // 15pt, not the default 11 -- next to a 44pt icon badge,
+                    // the standard eyebrow size read as an afterthought
+                    // rather than the icon's actual label.
+                    PoiseEyebrow(text: UnitLabelFormatter.eyebrow(unit), size: 15)
+                }
                 Spacer()
                 Button(action: { dismiss() }) {
                     Image(systemName: "xmark")
@@ -482,7 +447,6 @@ private struct UnitDetailSheet: View {
             }
 
             VStack(alignment: .leading, spacing: 5) {
-                PoiseEyebrow(text: UnitLabelFormatter.eyebrow(unit))
                 Text(UnitLabelFormatter.topic(unit))
                     .font(PoiseType.title())
                     .foregroundStyle(Color.poiseNavy)
@@ -546,10 +510,10 @@ private struct LessonRow: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                if !isLocked {
-                    DurationLabel(minutes: lesson.estimatedMinutes)
-                }
-
+                // Dropped for the same reason it came off the Up Next hero
+                // card: every one of the 26 lessons is 5 minutes (see
+                // MockLessonContent.estimatedMinutes), so it never told you
+                // anything a lesson-to-lesson comparison would use.
                 Image(systemName: isLocked ? "lock.fill" : "chevron.right")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(Color.poiseMuted)
@@ -567,6 +531,13 @@ private struct LessonRow: View {
     private var unlockHint: String {
         guard let unlockProgress, unlockProgress.total > 0 else {
             return "Finish this unit's lessons to unlock"
+        }
+        // At zero done, "Finish the N lessons in this unit" already says
+        // everything -- appending "0 of N done" just repeats the same N with
+        // no new information. Once something's actually been done, the count
+        // starts saying something the first clause didn't (how far along).
+        guard unlockProgress.done > 0 else {
+            return "Finish the \(unlockProgress.total) lessons in this unit to unlock"
         }
         return "Finish the \(unlockProgress.total) lessons in this unit · \(unlockProgress.done) of \(unlockProgress.total) done"
     }
@@ -645,7 +616,20 @@ private struct UnitGridCard: View {
                 // again -- but pairing the badge with the "UNIT 1" label
                 // still takes a whole row out of every card.
                 HStack(spacing: 10) {
-                    PoiseIconBadge(icon: unit.lessons.first?.icon ?? "book.fill", color: accent, size: 34)
+                    // Solid fill, not PoiseIconBadge's usual light tint --
+                    // scoped to this card only; the shared badge (used
+                    // elsewhere) is untouched. Each unit's own accent, not
+                    // one shared color: on an otherwise-identical white card,
+                    // this is what lets four units be told apart at a
+                    // glance without reading the title.
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(accent)
+                        Image(systemName: unit.lessons.first?.icon ?? "book.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Color.white)
+                    }
+                    .frame(width: 34, height: 34)
                     PoiseEyebrow(text: UnitLabelFormatter.eyebrow(unit))
                     Spacer(minLength: 4)
                     // Always the chevron: this slot is the affordance, and
@@ -661,19 +645,20 @@ private struct UnitGridCard: View {
 
                 Spacer().frame(height: 10)
 
-                // One rung down the ladder (14pt, not 16) so every unit name
-                // fits on a single line: at 16pt "Hard Conversations" measured
-                // 148.4pt against 147pt of content width -- over by 1.4pt, and
-                // that single wrap was what made its row taller than the other
-                // (the grid equalizes heights WITHIN a row, not between rows).
-                // At 14pt it needs ~130pt, leaving real margin. One line
-                // everywhere means all four cards match with no reserved
-                // Two lines, not one. The single-line version promised to
-                // shrink rather than truncate and then did truncate --
-                // "Foundations & Expecta..." -- once the curriculum moved to
-                // names longer than the original four. Wrapping is the honest
-                // fix; minimumScaleFactor still catches anything longer again.
-                Text(UnitLabelFormatter.topic(unit))
+                // One rung down the ladder (14pt, not 16) so unit names have
+                // the best chance of fitting on a single line. `shortTitle`
+                // (LessonUnit.shortTitle) does the rest of the work: the grid
+                // equalizes card heights WITHIN a row, so a unit whose full
+                // name wraps to two lines was forcing its one-line neighbor to
+                // carry the same blank second line -- a shorter phrasing for
+                // units that need it (set in PoiseLessonLibrary.unitInfo)
+                // means every card in the row is actually the same height for
+                // the same reason, not padded to match the longest wrap.
+                // lineLimit/minimumScaleFactor stay on as a safety net, not
+                // the primary fix -- they'll still catch a future unit name
+                // that's long even in its short form, just by shrinking
+                // rather than truncating.
+                Text(unit.shortTitle ?? UnitLabelFormatter.topic(unit))
                     .font(PoiseType.subhead(.bold))
                     .foregroundStyle(Color.poiseNavy)
                     .lineLimit(2)
@@ -811,13 +796,16 @@ private enum CharacterCrops {
 
     private static let faceCenterX: CGFloat = 0.4969
 
-    // Portrait slice for the hero card's trailing panel: head high in the
-    // frame with the skyline behind him, cut just above the desk (whose top
-    // edge measures at y = 81.3%) so the bottom is torso, not a tan sliver of
-    // desktop. Width is derived from the panel's own aspect ratio so nothing
-    // is re-cropped at display time.
-    static var heroPanel: UIImage? {
-        crop(key: "hero", top: 0.05, bottom: 0.805, aspect: 110.0 / 176.0)
+    // Wide, short slice for the hero card's banner (a "video call tile"
+    // treatment -- see UpNextCard): face and shoulders centered in a band
+    // from just above the hair to mid-torso, giving a webcam-style framing
+    // rather than the old portrait panel's head-to-torso crop. Shifted down
+    // from an earlier top: 0.10/bottom: 0.62 pass, which left too much bare
+    // ceiling above the hair (22.8%) and cut off too soon above the chin
+    // (50%) -- top: 0.17 trims most of that headroom and bottom: 0.71 shows
+    // shoulders/chest instead of stopping right at the chin.
+    static var heroBanner: UIImage? {
+        crop(key: "heroBanner", top: 0.17, bottom: 0.71, aspect: 350.0 / 175.0)
     }
 
     private static func crop(key: String, top: CGFloat, bottom: CGFloat, aspect: CGFloat) -> UIImage? {

@@ -44,8 +44,8 @@ struct PoiseType {
         .system(size: 25, weight: weight, design: .rounded)
     }
 
-    static func headline(_ weight: Font.Weight = .bold) -> Font {
-        .system(size: 18, weight: weight, design: .rounded)
+    static func headline(_ weight: Font.Weight = .bold, size: CGFloat = 18) -> Font {
+        .system(size: size, weight: weight, design: .rounded)
     }
 
     // Default .medium, not .regular. SF Rounded only reads as rounded from
@@ -70,8 +70,8 @@ struct PoiseType {
     // Small all-caps labels (section headers, "UNIT 1", "UP NEXT"). Always
     // pair with `.tracking(PoiseType.eyebrowTracking)` and uppercased text
     // so every eyebrow in the app reads as the same element.
-    static func eyebrow(_ weight: Font.Weight = .heavy) -> Font {
-        .system(size: 11, weight: weight, design: .rounded)
+    static func eyebrow(_ weight: Font.Weight = .heavy, size: CGFloat = 11) -> Font {
+        .system(size: size, weight: weight, design: .rounded)
     }
 
     static let eyebrowTracking: CGFloat = 1.1

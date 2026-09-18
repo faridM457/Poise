@@ -288,9 +288,19 @@ private struct BadgeSection: View {
         PoiseBadgeCatalogue.all.filter(store.hasEarned).count
     }
 
+    // Everything -- the summary row AND every expanded group -- lives inside
+    // ONE PoiseSurfaceCard now, not a stack of separate ones. Each expanded
+    // group used to get its own card with the same border/shadow/eyebrow
+    // treatment as the summary row above it and every other top-level
+    // section on this page (Practice days, Weekly goal, Checkpoint results),
+    // so tapping to expand looked like new page sections appearing rather
+    // than badges unfolding into their own detail. One shared card boundary,
+    // with PoiseDivider between the summary and each group and between
+    // groups, is what a native grouped-list section looks like: contained,
+    // not a peer to the page's other cards.
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            PoiseSurfaceCard {
+        PoiseSurfaceCard(padding: 0) {
+            VStack(alignment: .leading, spacing: 0) {
                 Button {
                     withAnimation(.snappy(duration: 0.26)) { isExpanded.toggle() }
                 } label: {
@@ -310,24 +320,26 @@ private struct BadgeSection: View {
                         }
                         SegmentedMeter(total: PoiseBadgeCatalogue.all.count, filled: earned, tint: .poiseGold)
                     }
+                    .padding(18)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-            }
-            .accessibilityLabel("\(earned) of \(PoiseBadgeCatalogue.all.count) badges earned")
-            .accessibilityHint(isExpanded ? "Collapse badge list" : "Expand badge list")
+                .accessibilityLabel("\(earned) of \(PoiseBadgeCatalogue.all.count) badges earned")
+                .accessibilityHint(isExpanded ? "Collapse badge list" : "Expand badge list")
 
-            if isExpanded {
-                ForEach(PoiseBadge.Group.allCases, id: \.self) { group in
-                    let badges = PoiseBadgeCatalogue.all.filter { $0.group == group }
-                    if !badges.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(group.title)
-                                .font(PoiseType.eyebrow())
-                                .tracking(PoiseType.eyebrowTracking)
-                                .foregroundStyle(Color.poiseMuted)
+                if isExpanded {
+                    ForEach(PoiseBadge.Group.allCases, id: \.self) { group in
+                        let badges = PoiseBadgeCatalogue.all.filter { $0.group == group }
+                        if !badges.isEmpty {
+                            PoiseDivider()
 
-                            PoiseSurfaceCard(padding: 0) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(group.title)
+                                    .font(PoiseType.eyebrow())
+                                    .tracking(PoiseType.eyebrowTracking)
+                                    .foregroundStyle(Color.poiseMuted)
+                                    .padding(.horizontal, 18)
+
                                 VStack(spacing: 0) {
                                     ForEach(Array(badges.enumerated()), id: \.element.id) { index, badge in
                                         if index > 0 {
@@ -337,10 +349,12 @@ private struct BadgeSection: View {
                                     }
                                 }
                             }
+                            .padding(.top, 14)
+                            .padding(.bottom, 4)
                         }
                     }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
     }
