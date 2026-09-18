@@ -37,7 +37,23 @@ final class SpeechRecognitionService: NSObject, ObservableObject {
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
 
-    func requestAuthorization() async -> Bool {
+    // Both permissions this needs, read synchronously with no prompt --
+    // used to drive Profile's real "Microphone access" toggle: whether to
+    // show it on, and whether tapping it should re-request (only works once,
+    // .notDetermined) or hand off to Settings (already decided either way).
+    static var isAuthorized: Bool {
+        SFSpeechRecognizer.authorizationStatus() == .authorized
+            && AVAudioApplication.shared.recordPermission == .granted
+    }
+
+    static var isUndetermined: Bool {
+        SFSpeechRecognizer.authorizationStatus() == .notDetermined
+    }
+
+    // Static, not instance-bound: doesn't touch `self`, and Profile's
+    // permission toggle needs to call this without spinning up a whole
+    // listening session's AVAudioEngine just to ask for access.
+    static func requestAuthorization() async -> Bool {
         let speechStatus = await withCheckedContinuation { continuation in
             SFSpeechRecognizer.requestAuthorization { status in
                 continuation.resume(returning: status)
@@ -64,7 +80,7 @@ final class SpeechRecognitionService: NSObject, ObservableObject {
         guard !isListening else { return }
         errorMessage = nil
 
-        let authorized = await requestAuthorization()
+        let authorized = await Self.requestAuthorization()
         guard authorized else {
             errorMessage = ServiceError.permissionDenied.localizedDescription
             return
