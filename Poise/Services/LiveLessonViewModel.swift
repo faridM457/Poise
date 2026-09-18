@@ -8,20 +8,19 @@ import Foundation
 // lesson is wired to a live `LessonNode` right now.
 @MainActor
 final class LiveLessonViewModel: ObservableObject {
-    // Set to false to go back to real generation against the local
-    // conversation-engine server. While true, `start()`/`sendUserResponse()`
-    // use static canned content and never touch the network -- for iterating
-    // on layout/UI without waiting on (or re-triggering) a fresh generation
-    // every time the screen reloads.
-    static let useMockDataForUITesting = true
+    // Real generation against conversation-engine (Bedrock/Claude Haiku 4.5
+    // behind it) -- Debug builds hit localhost:3000, so the local server
+    // needs to be running (`npm start` in conversation-engine/); Release
+    // builds hit the deployed engine at api.sapersolutions.com. Set back to
+    // true to go back to static canned content for layout/UI iteration
+    // without touching the network or spending real Bedrock calls.
+    static let useMockDataForUITesting = false
 
-    // TESTING ONLY -- how many turns a mocked conversation runs before it ends
-    // and grades. The real lessons are 3 turns; 1 gets you to the scorecard
-    // quickly while iterating on it. Set back to nil to use the lesson's own
-    // turn count. Has no effect once useMockDataForUITesting is false, and
-    // deliberately does NOT change MockLessonContent.turnReplies, so the "5
-    // min" estimate on the Learn page still reflects the real lesson length.
-    static let mockTurnLimit: Int? = 1
+    // Real lesson length -- 3 turns, same as MockLessonContent.turnReplies
+    // and the "5 min" estimate on the Learn page. Has no effect while
+    // useMockDataForUITesting is false; only relevant if mocking is turned
+    // back on for UI iteration.
+    static let mockTurnLimit: Int? = nil
 
     let lessonId: String
 

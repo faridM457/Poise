@@ -1,4 +1,5 @@
 import SwiftUI
+import os
 
 // Real, server-generated version of LessonFlowView's step machine (briefing
 // -> guide -> roleplay -> scorecard), used when a LessonNode has an
@@ -11,6 +12,10 @@ import SwiftUI
 // character is "Sam", not Marcus) -- the name/role text shown is the real
 // one, only the avatar art is a stand-in.
 struct LiveLessonFlowView: View {
+    // Traces the ad lifecycle around a lesson's completion -- see
+    // AdsManager's own logger for why this is os.Logger, not print().
+    fileprivate static let adsLogger = Logger(subsystem: "com.sapersolutions.poise", category: "Ads")
+
     private enum Step {
         case briefing
         case guide
@@ -106,6 +111,15 @@ struct LiveLessonFlowView: View {
                         }
                     case .scorecard:
                         LiveScorecardView(viewModel: viewModel, isCheckpoint: isCheckpoint, onContinue: recordAndFinish)
+                            .task {
+                                // Preload now so the interstitial (if this
+                                // user is free-tier) is already sitting in
+                                // memory by the time they tap Continue.
+                                Self.adsLogger.notice("scorecard reached, isPro=\(SubscriptionStore.shared.isPro), debugSkipRoleplay=\(LearnProgressStore.shared.debugSkipRoleplay)")
+                                if !SubscriptionStore.shared.isPro {
+                                    AdsManager.shared.preloadInterstitial()
+                                }
+                            }
                     }
                 }
             }
@@ -171,7 +185,18 @@ struct LiveLessonFlowView: View {
                 criteriaTotal: feedback.checklist.count
             )
         }
-        onFinish(true)
+        // Free-tier only. If no ad is ready (still loading, failed, or
+        // unconfigured), the completion fires immediately -- see
+        // AdsManager.presentInterstitial.
+        guard !SubscriptionStore.shared.isPro else {
+            Self.adsLogger.notice("Continue tapped, isPro=true -- no ad attempted")
+            onFinish(true)
+            return
+        }
+        Self.adsLogger.notice("Continue tapped, isPro=false -- attempting to present")
+        AdsManager.shared.presentInterstitial { [onFinish] in
+            onFinish(true)
+        }
     }
 
     private func startRoleplay() {
@@ -297,10 +322,6 @@ private struct LiveBriefingView: View {
                     .font(PoiseType.body())
                     .foregroundStyle(Color.poiseMuted)
                     .lineSpacing(5)
-
-                Text("This scenario and conversation are generated fresh each time by Claude, not scripted.")
-                    .font(PoiseType.caption(.semibold))
-                    .foregroundStyle(Color.poiseMuted)
             }
             .padding(24)
         }
@@ -551,7 +572,7 @@ private struct LiveRoleplayView: View {
 
                 VStack {
                     HStack {
-                        Text("\(viewModel.character?.name ?? "NPC") · Turn \(viewModel.turnNumber)")
+                        Text(viewModel.character?.name ?? "NPC")
                             .font(PoiseType.caption(.heavy))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 13)
