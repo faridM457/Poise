@@ -60,3 +60,12 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
+
+# Pocket TTS large runtime assets (not checked in -- source separately)
+Poise/Resources/Models/model.safetensors
+Poise/Resources/Models/tokenizer.model
+Frameworks/PocketTTS.xcframework/*/*.a
+Poise/Resources/CharacterAnimations/*.mp4
+
+# OS junk
+.DS_Store

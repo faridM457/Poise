@@ -57,8 +57,8 @@ private struct PoiseBottomTabBar: View {
             )
         }
         .padding(.horizontal, 22)
-        .padding(.top, 12)
-        .padding(.bottom, 8)
+        .padding(.top, 6)
+        .padding(.bottom, 2)
         .background(
             UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28)
                 .fill(.white)
@@ -91,7 +91,7 @@ private struct BottomTabButton: View {
                     .font(.system(size: 14, weight: .heavy, design: .rounded))
             }
             .foregroundStyle(isSelected ? Color.poiseBlue : Color.poiseNavy.opacity(0.72))
-            .frame(maxWidth: .infinity, minHeight: 70)
+            .frame(maxWidth: .infinity, minHeight: 54)
             .background(
                 Group {
                     if isSelected {
