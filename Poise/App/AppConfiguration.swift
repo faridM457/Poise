@@ -20,10 +20,10 @@ enum RevenueCatConfig {
     // paying users.
     private static let testStoreKey = "test_wwZMvuBadTGHkKuouqJFsMBCsxa"
 
-    // REQUIRED BEFORE ANY TESTFLIGHT OR APP STORE BUILD.
-    // Get this from RevenueCat → Project Settings → API keys → the Apple app's
-    // public SDK key. It starts with "appl_".
-    private static let productionKey = ""
+    // The Apple app's public SDK key, generated automatically when the App
+    // Store app was connected in RevenueCat (Project Settings → Apps →
+    // Poise (App Store) → API keys).
+    private static let productionKey = "appl_rwipBkvIqQDfFzSRZcZqSDewItl"
 
     static var apiKey: String {
         #if DEBUG
@@ -49,6 +49,31 @@ enum RevenueCatConfig {
     }
 }
 
+enum AdsConfig {
+    // Free-tier-only interstitial shown after a lesson's scorecard. RevenueCat
+    // has no ad-serving product -- its 2026 ad-monetization feature only
+    // tracks revenue from an existing ad SDK alongside subscriptions -- so
+    // this is a separate integration (Google Mobile Ads / AdMob) gated on
+    // SubscriptionStore.isPro rather than anything RevenueCat provides.
+    //
+    // Google's own test ad unit ID: safe to ship in Debug indefinitely, backed
+    // by Google, never serves a real (paying) ad. https://developers.google.com/admob/ios/test-ads
+    private static let testInterstitialUnitID = "ca-app-pub-3940256099942544/4411468910"
+
+    private static let productionInterstitialUnitID = "ca-app-pub-4763995977400393/3426681015"
+
+    // nil, rather than a precondition failure like the other configs here --
+    // a missing ad unit ID means no ads show, which is a lost-revenue bug,
+    // not a crash-worthy one the way a missing purchase or engine key is.
+    static var interstitialAdUnitID: String? {
+        #if DEBUG
+        return testInterstitialUnitID
+        #else
+        return productionInterstitialUnitID.isEmpty ? nil : productionInterstitialUnitID
+        #endif
+    }
+}
+
 enum EngineConfig {
     // Shared key sent as X-Poise-App-Key on every engine request. It is
     // compiled into the binary, so it filters random traffic rather than
@@ -56,10 +81,9 @@ enum EngineConfig {
     // the eventual hardening. Must match POISE_APP_KEY in the engine's .env.
     private static let debugAppKey = "poise-dev-app-key"
 
-    // REQUIRED BEFORE ANY TESTFLIGHT OR APP STORE BUILD. Generate one with
-    // `openssl rand -hex 32` and set the same value as POISE_APP_KEY on the
-    // deployed server.
-    private static let productionAppKey = ""
+    // Must match POISE_APP_KEY in conversation-engine/.env (local for now --
+    // when the engine gets real hosting, set the same value there too).
+    private static let productionAppKey = "6527ea119b99dae75e1355613adb39cd56b42bc7c60ca43bce14c6deba72ba65"
 
     static var appKey: String {
         #if DEBUG

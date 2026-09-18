@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PoiseRootView: View {
     @State private var selectedTab: AppTab = .learn
+    @State private var showSignInPrompt = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -33,6 +34,24 @@ struct PoiseRootView: View {
             // Confirms (or corrects) the cached Pro flag the app launched
             // with, so the energy cap and regen interval settle to the truth.
             await SubscriptionStore.shared.refreshAtLaunch()
+            if AccountStore.shared.shouldShowSignInPrompt {
+                showSignInPrompt = true
+            }
+        }
+        // Prefetched here, at launch, rather than left to PaywallSheet's own
+        // .task -- offerings arriving *after* the paywall sheet has already
+        // finished its presentation transition let its plan list grow in
+        // right as the sheet's height was settling, and the sheet's height
+        // then stays locked to whatever it measured at that moment, hiding
+        // the plan list permanently even though it's still in the view tree
+        // (confirmed: a debug block placed in the same spot flashed briefly
+        // then vanished, and a colored ScrollView background showed its
+        // measured content height never grew to include it). Loading here
+        // means `sortedPackages` is already populated by the time anyone
+        // taps through to the paywall, so its sheet has everything it needs
+        // for its very first layout pass -- nothing changes shape after.
+        .task {
+            await SubscriptionStore.shared.loadOfferings()
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
@@ -41,6 +60,13 @@ struct PoiseRootView: View {
                 // another device while the app is backgrounded.
                 Task { await SubscriptionStore.shared.refreshEntitlement() }
             }
+        }
+        // Once, ever, per install -- see AccountStore.shouldShowSignInPrompt
+        // for why that's a local flag rather than a synced one. `onDismiss`
+        // covers every way this can close (the button's own onDismiss call,
+        // "Not now", or a swipe), so the flag only needs setting in one place.
+        .sheet(isPresented: $showSignInPrompt, onDismiss: { AccountStore.shared.markSignInPromptShown() }) {
+            SignInPromptSheet(onDismiss: { showSignInPrompt = false })
         }
     }
 }
