@@ -12,6 +12,11 @@ import { verifyPro } from "./entitlement.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
+// Trust exactly one hop (the Apache reverse proxy this server always runs
+// behind) so req.ip reads the real client address from X-Forwarded-For
+// instead of Apache's own localhost connection -- needed for rateLimit's
+// keyBy: "ip" to actually distinguish callers.
+app.set("trust proxy", 1);
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "..", "public")));
 
@@ -47,25 +52,32 @@ app.get("/api/energy", async (req, res) => {
 
 // Redeems a Shipaton-judge code, granting the caller a large standing energy
 // cap so they can play through every lesson (with repeats) in one sitting.
-// See energy.js: redeemJudgeCode for the full mechanism. The code is short
-// and memorable by design (it's handed to judges), which makes it a guessing
-// target -- so this gets a much tighter cap than the generation endpoints
-// below: a few tries survive a fat-fingered code, nowhere near enough to
-// brute-force one.
-app.post("/api/redeem", rateLimit("redeem", { limit: 5 }), async (req, res) => {
-  try {
-    const { code } = req.body;
-    if (typeof code !== "string" || !code) {
-      return res.status(400).json({ error: "Missing code." });
+// See energy.js: redeemJudgeCode for the full mechanism. The code itself is
+// a long random string, not something memorable, precisely because it's a
+// guessing target -- judges get it handed to them directly, they never need
+// to recall it. Rate-limited on two independent keys (X-Poise-User AND
+// source IP) so rotating the client-supplied header alone can't reset the
+// attempt counter; a few tries survive a mistyped paste, nowhere near enough
+// to brute-force a long random string either way.
+app.post(
+  "/api/redeem",
+  rateLimit("redeem", { limit: 5 }),
+  rateLimit("redeem-ip", { limit: 5, keyBy: "ip" }),
+  async (req, res) => {
+    try {
+      const { code } = req.body;
+      if (typeof code !== "string" || !code) {
+        return res.status(400).json({ error: "Missing code." });
+      }
+      const result = redeemJudgeCode(req.poiseUser, code);
+      if (!result.ok) return res.status(400).json({ error: "Invalid code." });
+      res.json({ energy: publicState(result.row) });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: err.message });
     }
-    const result = redeemJudgeCode(req.poiseUser, code);
-    if (!result.ok) return res.status(400).json({ error: "Invalid code." });
-    res.json({ energy: publicState(result.row) });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
   }
-});
+);
 
 app.post("/api/scenario", rateLimit("scenario"), async (req, res) => {
   try {

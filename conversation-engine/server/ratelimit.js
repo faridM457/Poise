@@ -15,9 +15,18 @@ const LIMIT = 10;
 
 const hits = new Map(); // key -> [timestamps]
 
-export function rateLimit(bucket, { limit = LIMIT, windowMs = WINDOW_MS } = {}) {
+// `keyBy: "ip"` closes a real gap in the default per-user key: X-Poise-User
+// is a client-supplied header, not an authenticated identity, so a caller
+// can reset their own counter just by sending a new one. IP isn't spoofable
+// the same way (it's the TCP connection, not a header the client writes),
+// so combining both on a route -- one call keyed by user, one by IP -- means
+// rotating the header alone no longer resets anything. Requires the server
+// to actually see the real client IP: `app.set("trust proxy", ...)` in
+// index.js so Express reads it from X-Forwarded-For behind the Apache
+// reverse proxy, instead of everything showing up as localhost.
+export function rateLimit(bucket, { limit = LIMIT, windowMs = WINDOW_MS, keyBy = "user" } = {}) {
   return (req, res, next) => {
-    const key = `${bucket}:${req.poiseUser}`;
+    const key = `${bucket}:${keyBy}:${keyBy === "ip" ? req.ip : req.poiseUser}`;
     const now = Date.now();
     const recent = (hits.get(key) ?? []).filter((t) => now - t < windowMs);
     if (recent.length >= limit) {
