@@ -7,7 +7,7 @@ import { generateScenario, generateOpeningLine, runTurn, generateFeedback } from
 import { transcribeWithWhisper, STT_MODES } from "./stt.js";
 import { requireAuth, requireConversation, issueToken, verifyToken } from "./auth.js";
 import { rateLimit } from "./ratelimit.js";
-import { getState, spend, publicState } from "./energy.js";
+import { getState, spend, publicState, redeemJudgeCode } from "./energy.js";
 import { verifyPro } from "./entitlement.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -45,6 +45,28 @@ app.get("/api/energy", async (req, res) => {
   }
 });
 
+// Redeems a Shipaton-judge code, granting the caller a large standing energy
+// cap so they can play through every lesson (with repeats) in one sitting.
+// See energy.js: redeemJudgeCode for the full mechanism. The code is short
+// and memorable by design (it's handed to judges), which makes it a guessing
+// target -- so this gets a much tighter cap than the generation endpoints
+// below: a few tries survive a fat-fingered code, nowhere near enough to
+// brute-force one.
+app.post("/api/redeem", rateLimit("redeem", { limit: 5 }), async (req, res) => {
+  try {
+    const { code } = req.body;
+    if (typeof code !== "string" || !code) {
+      return res.status(400).json({ error: "Missing code." });
+    }
+    const result = redeemJudgeCode(req.poiseUser, code);
+    if (!result.ok) return res.status(400).json({ error: "Invalid code." });
+    res.json({ energy: publicState(result.row) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/api/scenario", rateLimit("scenario"), async (req, res) => {
   try {
     const lesson = getLessonById(req.body.lessonId);
@@ -72,7 +94,13 @@ app.post("/api/opening", rateLimit("opening"), async (req, res) => {
   }
 });
 
-app.post("/api/turn", async (req, res) => {
+// Every turn is a real model call, win or lose a valid conversation token
+// (only turn 1 also charges energy). Once a token is issued, turns 2+ are
+// gated on nothing else, so a fast replay loop against a live token is free
+// to hammer this endpoint -- rate limit it same as scenario/opening. The
+// limit is higher than theirs because one lesson is up to MAX_USER_TURNS (5)
+// calls here against one scenario/opening pair, not one.
+app.post("/api/turn", rateLimit("turn", { limit: 50 }), async (req, res) => {
   try {
     const lesson = getLessonById(req.body.lessonId);
     if (!lesson) return res.status(404).json({ error: "Unknown lessonId" });
@@ -120,7 +148,10 @@ app.post("/api/turn", async (req, res) => {
   }
 });
 
-app.post("/api/feedback", requireConversation, async (req, res) => {
+// Same real-model-call exposure as scenario/opening, gated only by a valid
+// conversation token rather than a fresh energy charge -- add the same class
+// of limit, with a bit of headroom over their default for a redone lesson.
+app.post("/api/feedback", rateLimit("feedback", { limit: 15 }), requireConversation, async (req, res) => {
   try {
     const lesson = getLessonById(req.body.lessonId);
     if (!lesson) return res.status(404).json({ error: "Unknown lessonId" });
@@ -150,7 +181,12 @@ app.get("/api/stt-test/modes", (req, res) => {
   );
 });
 
-app.post("/api/stt-test", express.raw({ type: "audio/wav", limit: "25mb" }), async (req, res) => {
+// No shipping-app call site hits this -- it's the local whisper.cpp harness
+// public/stt-test.js drives (see stt.js: on-device, no vendor API, no paid
+// call). Still worth guarding: it accepts up to 25MB and spawns a whisper.cpp
+// subprocess per request, so it gets the same scenario/opening-class limit as
+// a resource-exhaustion guard rather than being left unguarded.
+app.post("/api/stt-test", rateLimit("stt-test"), express.raw({ type: "audio/wav", limit: "25mb" }), async (req, res) => {
   try {
     if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
       return res.status(400).json({ error: "Request body must be a WAV audio clip (Content-Type: audio/wav)" });
