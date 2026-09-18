@@ -8,12 +8,19 @@ import Foundation
 // lesson is wired to a live `LessonNode` right now.
 @MainActor
 final class LiveLessonViewModel: ObservableObject {
-    // Set to false to go back to real generation against the local
-    // conversation-engine server. While true, `start()`/`sendUserResponse()`
-    // use static canned content and never touch the network -- for iterating
-    // on layout/UI without waiting on (or re-triggering) a fresh generation
-    // every time the screen reloads.
-    static let useMockDataForUITesting = true
+    // Real generation against conversation-engine (Bedrock/Claude Haiku 4.5
+    // behind it) -- Debug builds hit localhost:3000, so the local server
+    // needs to be running (`npm start` in conversation-engine/); Release
+    // builds hit the deployed engine at api.sapersolutions.com. Set back to
+    // true to go back to static canned content for layout/UI iteration
+    // without touching the network or spending real Bedrock calls.
+    static let useMockDataForUITesting = false
+
+    // Real lesson length -- 3 turns, same as MockLessonContent.turnReplies
+    // and the "5 min" estimate on the Learn page. Has no effect while
+    // useMockDataForUITesting is false; only relevant if mocking is turned
+    // back on for UI iteration.
+    static let mockTurnLimit: Int? = nil
 
     let lessonId: String
 
@@ -35,6 +42,9 @@ final class LiveLessonViewModel: ObservableObject {
     @Published private(set) var ended = false
     @Published private(set) var resolution: String?
     @Published private(set) var feedback: FeedbackResponse?
+    // Issued by the server on turn 1 when the conversation is charged; must be
+    // sent on every later turn and on feedback, or the server refuses them.
+    private var conversationToken: String?
     @Published var errorMessage: String?
 
     private var scenario: EngineScenario?
@@ -95,6 +105,16 @@ final class LiveLessonViewModel: ObservableObject {
             return
         }
 
+        // A lesson keeps the scenario it was given until it is completed, so
+        // reopening one shows the same situation you were already reading
+        // rather than generating a replacement (and paying for it). See
+        // ScenarioCache.
+        if let cached = ScenarioCache.scenario(for: lessonId) {
+            applyCached(cached)
+            isLoadingScenario = false
+            return
+        }
+
         do {
             let scenarioResponse = try await ConversationEngineClient.fetchScenario(lessonId: lessonId)
             scenario = scenarioResponse.scenario
@@ -106,6 +126,17 @@ final class LiveLessonViewModel: ObservableObject {
                 lessonId: lessonId,
                 scenario: scenarioResponse.scenario
             )
+
+            ScenarioCache.store(
+                CachedScenario(
+                    scenario: scenarioResponse.scenario,
+                    character: scenarioResponse.lesson.character,
+                    openingLine: opening.openingLine,
+                    openingCharacterName: opening.character,
+                    generatedAt: Date()
+                ),
+                for: lessonId
+            )
             // Text is fetched eagerly (good for latency), but NOT presented
             // (synthesized/played/appended) yet -- see presentOpeningLineIfNeeded().
             pendingOpeningLine = ConversationMessage(speaker: .npc, text: opening.openingLine, characterName: opening.character)
@@ -114,6 +145,22 @@ final class LiveLessonViewModel: ObservableObject {
             errorMessage = friendlyMessage(for: error)
         }
         isLoadingScenario = false
+    }
+
+    // Restores a scenario from the cache into exactly the state a fresh fetch
+    // would have left behind, including the un-presented opening line -- the
+    // roleplay screen still reveals it on its own schedule.
+    private func applyCached(_ cached: CachedScenario) {
+        scenario = cached.scenario
+        briefing = cached.scenario.briefing
+        criteria = cached.scenario.criteria
+        character = cached.character
+        pendingOpeningLine = ConversationMessage(
+            speaker: .npc,
+            text: cached.openingLine,
+            characterName: cached.openingCharacterName
+        )
+        history = [HistoryTurn(role: "npc", text: cached.openingLine, character: cached.openingCharacterName)]
     }
 
     /// Call once, when the roleplay screen itself actually appears. Presents
@@ -180,8 +227,11 @@ final class LiveLessonViewModel: ObservableObject {
                 history: historyBeforeThisTurn,
                 metCriteria: metCriteria,
                 turnNumber: turnNumber,
-                userResponse: trimmed
+                userResponse: trimmed,
+                conversationToken: conversationToken
             )
+            if let token = result.conversationToken { conversationToken = token }
+            if let energy = result.energy { LearnProgressStore.shared.applyServerEnergy(energy) }
             await presentNPCMessage(ConversationMessage(speaker: .npc, text: result.npc_reply, characterName: result.character))
             history.append(HistoryTurn(role: "npc", text: result.npc_reply, character: result.character))
             metCriteria = result.updated_met_criteria
@@ -213,8 +263,10 @@ final class LiveLessonViewModel: ObservableObject {
                 metCriteria: metCriteria,
                 deductionCount: deductionCount,
                 resolution: resolution,
-                empathyLevels: empathyLevels
+                empathyLevels: empathyLevels,
+                conversationToken: conversationToken
             )
+            if let energy = feedback?.energy { LearnProgressStore.shared.applyServerEnergy(energy) }
         } catch {
             errorMessage = friendlyMessage(for: error)
         }
@@ -222,26 +274,27 @@ final class LiveLessonViewModel: ObservableObject {
 
     // MARK: - Mock content (UI testing only, see useMockDataForUITesting)
 
+    // Looked up by lessonId so every lesson gets its own
+    // mocked content instead of all sharing this one Sam/Meridian scenario --
+    // falls back to it only if `lessonId` doesn't match any known lesson,
+    // which shouldn't normally happen.
+    private var mockContent: MockLessonContent {
+        PoiseLessonLibrary.content(for: lessonId) ?? PoiseLessonLibrary.all[0]
+    }
+
     private func loadMockScenario() {
-        let mockScenario = EngineScenario(
-            briefing: "Sam has quietly missed two handoff details on the Meridian project this month -- nothing dramatic, but you're the one catching it each time. You've asked Sam to grab a few minutes.",
-            criteria: [
-                "Name a specific, observable pattern rather than a vague complaint",
-                "Invite Sam's perspective before proposing a fix",
-                "Agree on one concrete next step together",
-            ]
-        )
+        let content = mockContent
+        let mockScenario = EngineScenario(briefing: content.briefing, criteria: content.criteria)
         scenario = mockScenario
         briefing = mockScenario.briefing
         criteria = mockScenario.criteria
-        character = EngineCharacter(name: "Sam", role: "Direct report", relationship: "6 months on the team, reports to the user")
+        character = content.character
 
         // Same deferred-presentation rule as the live path: text is ready
         // now, but presentOpeningLineIfNeeded() (called from the roleplay
         // screen) is what actually synthesizes/plays/reveals it.
-        let opening = "Hey, thanks for grabbing time -- everything okay? You mentioned wanting to talk about Meridian?"
-        pendingOpeningLine = ConversationMessage(speaker: .npc, text: opening, characterName: "Sam")
-        history = [HistoryTurn(role: "npc", text: opening, character: "Sam")]
+        pendingOpeningLine = ConversationMessage(speaker: .npc, text: content.openingLine, characterName: content.character.name)
+        history = [HistoryTurn(role: "npc", text: content.openingLine, character: content.character.name)]
     }
 
     private func mockSendUserResponse() async {
@@ -249,14 +302,11 @@ final class LiveLessonViewModel: ObservableObject {
         // visible while testing, instead of resolving instantly.
         try? await Task.sleep(nanoseconds: 500_000_000)
 
-        let mockReplies = [
-            "Oh -- I didn't realize that landed on you both times. I think I assumed someone else was tracking the client follow-ups.",
-            "That's fair. I can set myself a reminder the day before each handoff so it stops slipping through.",
-            "Okay, let's do that -- I'll send you a quick confirmation each time going forward.",
-        ]
+        let mockReplies = mockContent.turnReplies
+        let turnsThisRun = min(Self.mockTurnLimit ?? mockReplies.count, mockReplies.count)
         let reply = mockReplies[min(turnNumber - 1, mockReplies.count - 1)]
 
-        await presentNPCMessage(ConversationMessage(speaker: .npc, text: reply, characterName: character?.name ?? "Sam"))
+        await presentNPCMessage(ConversationMessage(speaker: .npc, text: reply, characterName: character?.name ?? mockContent.character.name))
         history.append(HistoryTurn(role: "npc", text: reply, character: character?.name))
 
         if turnNumber - 1 < criteria.count {
@@ -264,11 +314,41 @@ final class LiveLessonViewModel: ObservableObject {
             if !metCriteria.contains(newlyMet) { metCriteria.append(newlyMet) }
         }
 
-        if turnNumber >= 3 {
+        if turnNumber >= turnsThisRun {
             ended = true
             resolution = "approving"
             loadMockFeedback()
         }
+    }
+
+    // TESTING ONLY -- jumps straight to the scorecard without running a
+    // conversation, so the results screen can be worked on without playing
+    // three turns first. Driven by the Skip roleplay switch on Profile.
+    //
+    // Builds the feedback locally rather than asking the engine for it: a
+    // grading call with no transcript would either fail or invent a reading
+    // of a conversation that never happened, and paying tokens to be lied to
+    // is worse than an obviously synthetic card. The feedback line says so on
+    // its face, so this can never be mistaken for a real result.
+    func skipToResults() {
+        ended = true
+        resolution = "approving"
+        // One criterion left unmet so the checklist shows both states.
+        metCriteria = criteria.count > 1 ? Array(criteria.dropLast()) : criteria
+        feedback = FeedbackResponse(
+            checklist: criteria.map { ChecklistEntry(criterion: $0, met: metCriteria.contains($0)) },
+            deductionCount: 0,
+            empathySummary: EmpathySummary(strong: 1, adequate: 1, minimal: 0),
+            resolution: resolution,
+            feedbackLine: "Roleplay skipped for testing. No conversation happened, so nothing here is a real assessment.",
+            // Spread across three tiers so the checkpoint scorecard and the
+            // Progress chart both have something to draw.
+            skills: SkillScores(
+                clarity: SkillScore(level: "strong", note: "Placeholder note — the roleplay was skipped."),
+                empathy: SkillScore(level: "solid", note: "Placeholder note — the roleplay was skipped."),
+                resolution: SkillScore(level: "developing", note: "Placeholder note — the roleplay was skipped.")
+            )
+        )
     }
 
     private func loadMockFeedback() {
@@ -277,13 +357,45 @@ final class LiveLessonViewModel: ObservableObject {
             deductionCount: deductionCount,
             empathySummary: EmpathySummary(strong: 2, adequate: 1, minimal: 0),
             resolution: resolution,
-            feedbackLine: "You named the pattern clearly and gave Sam room to respond before proposing next steps -- a steady, well-paced conversation."
+            feedbackLine: mockContent.feedbackLine,
+            // SAMPLE TEXT, mock path only -- written to show the shape and
+            // quality the engine's notes are meant to have, so the scorecard
+            // can be judged without a server. Deliberately spread across three
+            // levels so every chip colour is visible. Never shown once
+            // useMockDataForUITesting is false.
+            skills: SkillScores(
+                clarity: SkillScore(
+                    level: "developing",
+                    note: "You raised the pattern but never said what it was costing the team."
+                ),
+                empathy: SkillScore(
+                    level: "needs_work",
+                    note: "They mentioned being stretched thin and you moved straight past it."
+                ),
+                resolution: SkillScore(
+                    level: "solid",
+                    note: "You agreed it should change, but not who does what next."
+                )
+            )
         )
     }
 
     private func friendlyMessage(for error: Error) -> String {
         if let engineError = error as? ConversationEngineError {
-            return engineError.localizedDescription
+            switch engineError {
+            case .outOfEnergy, .rateLimited:
+                // Already worded for the user by the error itself.
+                return engineError.localizedDescription
+            case .unauthorized(let message):
+                // A rejected conversation token means the server no longer
+                // recognises this run -- say what to do rather than echo the
+                // status.
+                return message.contains("Conversation token")
+                    ? "This conversation has expired. Start it again from the lesson."
+                    : "This build isn't authorised to use the conversation engine. (\(message))"
+            case .server, .invalidResponse:
+                return engineError.localizedDescription
+            }
         }
         return "Couldn't reach the local conversation-engine server at \(ConversationEngineClient.baseURL.absoluteString). " +
             "Make sure it's running (`npm start` in conversation-engine/). (\(error.localizedDescription))"

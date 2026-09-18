@@ -9,6 +9,10 @@
 /* Begin PBXBuildFile section */
 		4B7C913047A022AF05CA9874 /* PocketTTS.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3B2A73BD70DC2E85640DA344 /* PocketTTS.xcframework */; };
 		ACC6D817BF86B16CFE007955 /* PocketTTS.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 3B2A73BD70DC2E85640DA344 /* PocketTTS.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		115E043E3058B86300442C82 /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = 115E043D3058B86300442C82 /* RevenueCat */; };
+		115E04403058B86B00442C82 /* RevenueCatUI in Frameworks */ = {isa = PBXBuildFile; productRef = 115E043F3058B86B00442C82 /* RevenueCatUI */; };
+		F0816664C246C754687CC597 /* GoogleMobileAds in Frameworks */ = {isa = PBXBuildFile; productRef = 58FE8F3419777352E0542D74 /* GoogleMobileAds */; };
+		919788DC44434548B07B9630 /* RevenueCatAdMob in Frameworks */ = {isa = PBXBuildFile; productRef = D75EE1A9C9BD4222BD4A3295 /* RevenueCatAdMob */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -44,6 +48,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				4B7C913047A022AF05CA9874 /* PocketTTS.xcframework in Frameworks */,
+				115E04403058B86B00442C82 /* RevenueCatUI in Frameworks */,
+				F0816664C246C754687CC597 /* GoogleMobileAds in Frameworks */,
+				115E043E3058B86300442C82 /* RevenueCat in Frameworks */,
+				919788DC44434548B07B9630 /* RevenueCatAdMob in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -54,7 +62,9 @@
 			isa = PBXGroup;
 			children = (
 				115E03B13055171A00442C82 /* Poise */,
+				115E043C3058B86300442C82 /* Frameworks */,
 				115E03B03055171A00442C82 /* Products */,
+				386C415C3057521600C8CFB5 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -64,6 +74,21 @@
 				115E03AF3055171A00442C82 /* Poise.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		386C415C3057521600C8CFB5 /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				3B2A73BD70DC2E85640DA344 /* PocketTTS.xcframework */,
+			);
+			name = "Recovered References";
+			sourceTree = "<group>";
+		};
+		115E043C3058B86300442C82 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -87,6 +112,10 @@
 			);
 			name = Poise;
 			packageProductDependencies = (
+				115E043D3058B86300442C82 /* RevenueCat */,
+				115E043F3058B86B00442C82 /* RevenueCatUI */,
+				58FE8F3419777352E0542D74 /* GoogleMobileAds */,
+				D75EE1A9C9BD4222BD4A3295 /* RevenueCatAdMob */,
 			);
 			productName = Poise;
 			productReference = 115E03AF3055171A00442C82 /* Poise.app */;
@@ -98,6 +127,7 @@
 		115E03A73055171A00442C82 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
+				ORGANIZATIONNAME = "Saper Solutions";
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2660;
 				LastUpgradeCheck = 2660;
@@ -116,6 +146,11 @@
 			);
 			mainGroup = 115E03A63055171A00442C82;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				115E043B3058AFEC00442C82 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */,
+				573234933145F6C2D78136CD /* XCRemoteSwiftPackageReference "swift-package-manager-google-mobile-ads" */,
+				073ED7B34FDA4C3D90FAC2C1 /* XCRemoteSwiftPackageReference "purchases-ios-admob" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 115E03B03055171A00442C82 /* Products */;
 			projectDirPath = "";
@@ -266,11 +301,17 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Poise.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5335LL5R57;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Frameworks",
+				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -282,11 +323,16 @@
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				FRAMEWORK_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(PROJECT_DIR)/Frameworks",
-				);
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				// Pinned high (not the code's own floor of 17.0-17.5, see
+				// @available markers) because a lower target triggers a
+				// deterministic Swift 6.3.3 compiler crash (EarlyPerfInliner
+				// segfault in whole-module -O) on pocket_tts_ios.swift's
+				// generated UniffiHandleMap deinit -- reproduced twice at
+				// 17.5, absent at this value. Confirmed this is the actual
+				// cause, not a flake, before reverting to it. Revisit once
+				// there's a newer Xcode/Swift toolchain or a rebuilt
+				// PocketTTS.xcframework to retest against.
 				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
@@ -294,18 +340,18 @@
 				MARKETING_VERSION = 1.0;
 				"OTHER_LDFLAGS[sdk=iphoneos*]" = "-lc++";
 				"OTHER_LDFLAGS[sdk=iphonesimulator*]" = "-lc++";
-				PRODUCT_BUNDLE_IDENTIFIER = com.faridmsaju.Poise;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sapersolutions.poise;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TARGETED_DEVICE_FAMILY = "1";
 				XROS_DEPLOYMENT_TARGET = 26.5;
 			};
 			name = Debug;
@@ -315,11 +361,17 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Poise.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5335LL5R57;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Frameworks",
+				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -331,11 +383,16 @@
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				FRAMEWORK_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(PROJECT_DIR)/Frameworks",
-				);
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				// Pinned high (not the code's own floor of 17.0-17.5, see
+				// @available markers) because a lower target triggers a
+				// deterministic Swift 6.3.3 compiler crash (EarlyPerfInliner
+				// segfault in whole-module -O) on pocket_tts_ios.swift's
+				// generated UniffiHandleMap deinit -- reproduced twice at
+				// 17.5, absent at this value. Confirmed this is the actual
+				// cause, not a flake, before reverting to it. Revisit once
+				// there's a newer Xcode/Swift toolchain or a rebuilt
+				// PocketTTS.xcframework to retest against.
 				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
@@ -343,18 +400,18 @@
 				MARKETING_VERSION = 1.0;
 				"OTHER_LDFLAGS[sdk=iphoneos*]" = "-lc++";
 				"OTHER_LDFLAGS[sdk=iphonesimulator*]" = "-lc++";
-				PRODUCT_BUNDLE_IDENTIFIER = com.faridmsaju.Poise;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sapersolutions.poise;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TARGETED_DEVICE_FAMILY = "1";
 				XROS_DEPLOYMENT_TARGET = 26.5;
 			};
 			name = Release;
@@ -381,6 +438,56 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		115E043B3058AFEC00442C82 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/RevenueCat/purchases-ios-spm.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.89.0;
+			};
+		};
+		573234933145F6C2D78136CD /* XCRemoteSwiftPackageReference "swift-package-manager-google-mobile-ads" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/googleads/swift-package-manager-google-mobile-ads.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 13.0.0;
+			};
+		};
+		073ED7B34FDA4C3D90FAC2C1 /* XCRemoteSwiftPackageReference "purchases-ios-admob" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/RevenueCat/purchases-ios-admob.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.90.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		115E043D3058B86300442C82 /* RevenueCat */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 115E043B3058AFEC00442C82 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */;
+			productName = RevenueCat;
+		};
+		115E043F3058B86B00442C82 /* RevenueCatUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 115E043B3058AFEC00442C82 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */;
+			productName = RevenueCatUI;
+		};
+		58FE8F3419777352E0542D74 /* GoogleMobileAds */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 573234933145F6C2D78136CD /* XCRemoteSwiftPackageReference "swift-package-manager-google-mobile-ads" */;
+			productName = GoogleMobileAds;
+		};
+		D75EE1A9C9BD4222BD4A3295 /* RevenueCatAdMob */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 073ED7B34FDA4C3D90FAC2C1 /* XCRemoteSwiftPackageReference "purchases-ios-admob" */;
+			productName = RevenueCatAdMob;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 115E03A73055171A00442C82 /* Project object */;
 }

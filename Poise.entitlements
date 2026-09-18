@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Lets the app present the Sign in with Apple button. REQUIRES the
+	     "Sign In with Apple" capability to also be enabled on the App ID in
+	     the Apple Developer portal -- that part only the account holder can
+	     do; this file alone is not enough. -->
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
+	<!-- Backs NSUbiquitousKeyValueStore, which is how progress/profile data
+	     (Poise/Services/UserProfileStore.swift, LearnProgressStore.swift)
+	     now syncs across a signed-in-with-Apple user's devices/reinstalls
+	     instead of living only in local UserDefaults. REQUIRES the "iCloud"
+	     capability (Key-value storage service) enabled on the App ID, same
+	     caveat as above. $(TeamIdentifierPrefix) is resolved by Xcode at
+	     build time from the signing team -- do not replace with a literal
+	     value. -->
+	<key>com.apple.developer.ubiquity-kvstore-identifier</key>
+	<string>$(TeamIdentifierPrefix)$(CFBundleIdentifier)</string>
+</dict>
+</plist>
