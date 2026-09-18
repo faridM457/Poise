@@ -36,6 +36,15 @@ final class SubscriptionStore: ObservableObject {
     @Published private(set) var isPurchasing = false
     @Published var errorMessage: String?
 
+    // Per-package free-trial eligibility, keyed by package identifier.
+    // introductoryDiscount alone only says the PRODUCT has a trial configured
+    // -- Apple restricts a trial to first-time subscribers, so a returning
+    // subscriber (or anyone who already used it) is ineligible even though
+    // the product still carries the discount. Missing an entry here means
+    // "not checked yet," and the paywall treats that the same as eligible
+    // rather than hiding the trial while this loads.
+    @Published private(set) var introEligibility: [String: IntroEligibilityStatus] = [:]
+
     private var didRunStartupRefresh = false
 
     private init() {}
@@ -90,10 +99,31 @@ final class SubscriptionStore: ObservableObject {
             }
             packages = current.availablePackages
             loadState = .loaded
+            await refreshIntroEligibility()
         } catch {
             packages = []
             loadState = .unavailable("We couldn't load plans. Check your connection and try again.")
         }
+    }
+
+    // One StoreKit round-trip per package rather than the SDK's batched
+    // `checkTrialOrIntroDiscountEligibility(packages:)`, which keys its
+    // result by `Package` -- Package isn't Hashable in a way this store
+    // wants to lean on, and there are only ever one or two packages.
+    private func refreshIntroEligibility() async {
+        var result: [String: IntroEligibilityStatus] = [:]
+        for package in packages {
+            result[package.identifier] = await Purchases.shared.checkTrialOrIntroDiscountEligibility(
+                product: package.storeProduct
+            )
+        }
+        introEligibility = result
+    }
+
+    // Missing/.unknown/.eligible/.noIntroOfferExists all read as "show the
+    // trial if the product has one" -- only a confirmed .ineligible hides it.
+    func isEligibleForTrial(_ package: Package) -> Bool {
+        introEligibility[package.identifier] != .ineligible
     }
 
     // MARK: - Purchasing
