@@ -4,8 +4,11 @@ import Foundation
 // Single shared source of truth for the things that used to be hardcoded
 // literals scattered across LearnView/ProgressDashboardView/ProfileView:
 // streak, energy, and which lessons are completed.
-// In-memory + UserDefaults only (no backend) -- this is a prototype's
-// progress tracking, not a real account system.
+// In-memory + iCloud key-value storage (see CloudStore) for the real data,
+// plain UserDefaults for the two debug-only toggles -- still no custom
+// server-side backend or user database, just Apple's own per-Apple-ID sync,
+// which is what lets this survive a reinstall or follow the user to a new
+// device once they've signed in with Apple (see AccountStore).
 @MainActor
 final class LearnProgressStore: ObservableObject {
     static let shared = LearnProgressStore()
@@ -39,12 +42,16 @@ final class LearnProgressStore: ObservableObject {
     // here by SubscriptionStore.applyEntitlement -- never set directly, or the
     // app could believe someone is subscribed when the store disagrees.
     //
-    // Cached in UserDefaults so the correct cap and regen interval are in
-    // place on the very first frame after launch, before the entitlement
-    // check returns. The check then confirms or corrects it.
+    // Cached in iCloud key-value storage (see CloudStore), not just
+    // UserDefaults, for two reasons: the correct cap and regen interval are
+    // in place on the very first frame after launch, before the entitlement
+    // check returns (that check then confirms or corrects it); and on a
+    // fresh install on a second device, this cache -- like sessions, energy
+    // and lastRegenDate below -- is already right before RevenueCat's own
+    // async lookup even completes.
     @Published private(set) var isPremium: Bool {
         didSet {
-            UserDefaults.standard.set(isPremium, forKey: Self.premiumKey)
+            CloudStore.store.set(isPremium, forKey: Self.premiumKey)
             // The cap just changed -- reconcile immediately (e.g. clamp down
             // if energy was sitting above the new, lower free cap) rather
             // than waiting for the next regen tick.
@@ -57,6 +64,19 @@ final class LearnProgressStore: ObservableObject {
         }
     }
 
+    // Set only by redeeming a Shipaton-judge code (see
+    // ConversationEngineClient.redeemCode / energy.js: redeemJudgeCode).
+    // Deliberately independent of isPremium/RevenueCat: a judge account isn't
+    // "purchased," and tying it to isPremium would have it overwritten the
+    // next time SubscriptionStore syncs the real (non-)entitlement. It only
+    // ever widens the energy cap -- lessons themselves were never Pro-gated,
+    // just energy-gated, so that's the one lever a judge actually needs.
+    @Published private(set) var isJudge: Bool {
+        didSet { CloudStore.store.set(isJudge, forKey: Self.judgeKey) }
+    }
+    @Published private(set) var judgeEnergyCap: Int {
+        didSet { CloudStore.store.set(judgeEnergyCap, forKey: Self.judgeCapKey) }
+    }
 
     private static let sessionsKey = "poise.sessions"
     private static let dayOffsetKey = "poise.debugDayOffset"
@@ -64,6 +84,8 @@ final class LearnProgressStore: ObservableObject {
     private static let energyKey = "poise.energyRemaining"
     private static let lastRegenKey = "poise.lastEnergyRegenDate"
     private static let premiumKey = "poise.isPremium"
+    private static let judgeKey = "poise.isJudge"
+    private static let judgeCapKey = "poise.judgeEnergyCap"
 
     private var lastRegenDate: Date
 
@@ -96,23 +118,54 @@ final class LearnProgressStore: ObservableObject {
         didSet { UserDefaults.standard.set(debugSkipRoleplay, forKey: Self.skipRoleplayKey) }
     }
 
+    private var changeObserver: NSObjectProtocol?
+
     private init() {
         let defaults = UserDefaults.standard
-        isPremium = defaults.bool(forKey: Self.premiumKey)
+        // Only the four real-data keys migrate -- the debug toggles below
+        // stay local, deliberately (see their own comments).
+        CloudStore.migrateIfNeeded(Self.premiumKey)
+        CloudStore.migrateIfNeeded(Self.energyKey)
+        CloudStore.migrateIfNeeded(Self.lastRegenKey)
+        CloudStore.migrateIfNeeded(Self.sessionsKey)
+        let cloud = CloudStore.store
+
+        isPremium = cloud.bool(forKey: Self.premiumKey)
+        isJudge = cloud.bool(forKey: Self.judgeKey)
+        judgeEnergyCap = cloud.object(forKey: Self.judgeCapKey) != nil
+            ? Int(cloud.longLong(forKey: Self.judgeCapKey)) : Self.premiumEnergyCap
+        #if DEBUG
         debugDayOffset = defaults.integer(forKey: Self.dayOffsetKey)
         // Defaults on: this was added because the roleplay is the slow part of
         // every trip to the results screen. Flip it off to exercise the real flow.
         debugSkipRoleplay = defaults.object(forKey: Self.skipRoleplayKey) as? Bool ?? true
-        if defaults.object(forKey: Self.energyKey) != nil {
-            energyRemaining = defaults.integer(forKey: Self.energyKey)
+        #else
+        // Release must never read either debug key back out of UserDefaults.
+        // A device that was ever used for Debug testing (including a TestFlight
+        // build built with Debug config, or a device that ran this app in the
+        // simulator during development) would otherwise carry a persisted `true`
+        // for debugSkipRoleplay straight into a real user's App Store install --
+        // silently skipping every roleplay while still charging energy for it.
+        // Both toggles are testing-only and unreachable in Release anyway (see
+        // ProfileView's Testing section), so Release always starts them clean
+        // rather than trusting anything already on disk.
+        debugDayOffset = 0
+        debugSkipRoleplay = false
+        #endif
+        if cloud.object(forKey: Self.energyKey) != nil {
+            energyRemaining = Int(cloud.longLong(forKey: Self.energyKey))
         } else {
             energyRemaining = Self.freeEnergyCap
         }
-        lastRegenDate = defaults.object(forKey: Self.lastRegenKey) as? Date ?? Date()
-        if let data = defaults.data(forKey: Self.sessionsKey),
+        lastRegenDate = cloud.object(forKey: Self.lastRegenKey) as? Date ?? Date()
+        if let data = cloud.data(forKey: Self.sessionsKey),
            let decoded = try? JSONDecoder().decode([SessionRecord].self, from: data) {
             sessions = decoded.sorted { $0.finishedAt < $1.finishedAt }
             completedLessonIDs = Set(sessions.map(\.lessonID))
+        }
+
+        changeObserver = CloudStore.observeChanges { [weak self] changedKeys in
+            self?.applyExternalChanges(changedKeys)
         }
         applyRegenIfNeeded(now: Date())
     }
@@ -141,10 +194,17 @@ final class LearnProgressStore: ObservableObject {
     // reconciled. Cap is derived from the tier the server verified, which is
     // also more trustworthy than the cached isPremium.
     func applyServerEnergy(_ energy: ServerEnergy) {
-        energyRemaining = max(0, min(energy.cap, energy.remaining))
-        if energy.cap != energyCap {
+        // A cap above Pro's can only mean the server has this account marked
+        // as a judge (see energy.js: JUDGE_CAP) -- isPremium is left alone so
+        // a later RevenueCat sync doesn't fight this over Pro status, which
+        // redeeming a judge code was never meant to claim.
+        if energy.cap > Self.premiumEnergyCap {
+            isJudge = true
+            judgeEnergyCap = energy.cap
+        } else if energy.cap != energyCap {
             isPremium = energy.cap == Self.premiumEnergyCap
         }
+        energyRemaining = max(0, min(energy.cap, energy.remaining))
         // Back-derive the anchor so the local countdown matches the server's
         // nextRegenAt; at cap the server sends nil and the clock is idle.
         if let next = energy.nextRegenDate {
@@ -160,9 +220,12 @@ final class LearnProgressStore: ObservableObject {
         isPremium = isPro
     }
 
-    var energyCap: Int { isPremium ? Self.premiumEnergyCap : Self.freeEnergyCap }
+    var energyCap: Int {
+        if isJudge { return judgeEnergyCap }
+        return isPremium ? Self.premiumEnergyCap : Self.freeEnergyCap
+    }
 
-    var regenInterval: TimeInterval { isPremium ? Self.premiumRegenInterval : Self.freeRegenInterval }
+    var regenInterval: TimeInterval { (isPremium || isJudge) ? Self.premiumRegenInterval : Self.freeRegenInterval }
 
     // For copy that has to name the cadence ("one back every N hours").
     var regenHours: Int { Int(regenInterval / 3600) }
@@ -197,14 +260,43 @@ final class LearnProgressStore: ObservableObject {
     }
 
     private func persist() {
-        let defaults = UserDefaults.standard
-        defaults.set(energyRemaining, forKey: Self.energyKey)
-        defaults.set(lastRegenDate, forKey: Self.lastRegenKey)
+        let cloud = CloudStore.store
+        cloud.set(energyRemaining, forKey: Self.energyKey)
+        cloud.set(lastRegenDate, forKey: Self.lastRegenKey)
     }
 
     private func persistSessions() {
         guard let data = try? JSONEncoder().encode(sessions) else { return }
-        UserDefaults.standard.set(data, forKey: Self.sessionsKey)
+        CloudStore.store.set(data, forKey: Self.sessionsKey)
+    }
+
+    // Another device changed one of the four real-data keys (session
+    // history, energy, its regen clock, or the cached Pro flag) -- pull the
+    // new value in rather than waiting for a relaunch to notice. The debug
+    // keys are never in `changedKeys`: they were never migrated to iCloud in
+    // the first place (see init), so they never change externally.
+    private func applyExternalChanges(_ changedKeys: [String]) {
+        let cloud = CloudStore.store
+        if changedKeys.contains(Self.sessionsKey),
+           let data = cloud.data(forKey: Self.sessionsKey),
+           let decoded = try? JSONDecoder().decode([SessionRecord].self, from: data) {
+            sessions = decoded.sorted { $0.finishedAt < $1.finishedAt }
+        }
+        if changedKeys.contains(Self.energyKey) {
+            energyRemaining = Int(cloud.longLong(forKey: Self.energyKey))
+        }
+        if changedKeys.contains(Self.lastRegenKey) {
+            lastRegenDate = cloud.object(forKey: Self.lastRegenKey) as? Date ?? lastRegenDate
+        }
+        if changedKeys.contains(Self.premiumKey) {
+            isPremium = cloud.bool(forKey: Self.premiumKey)
+        }
+        if changedKeys.contains(Self.judgeKey) {
+            isJudge = cloud.bool(forKey: Self.judgeKey)
+        }
+        if changedKeys.contains(Self.judgeCapKey) {
+            judgeEnergyCap = Int(cloud.longLong(forKey: Self.judgeCapKey))
+        }
     }
 
     // Ordinary lessons are never gated: they are workplace scenarios a manager
@@ -366,28 +458,35 @@ final class LearnProgressStore: ObservableObject {
         return "\(secs)s"
     }
 
-    // What the Learn page's "Up next" offers: the first unfinished lesson in
-    // the unit the user most recently worked in. If that unit is finished,
-    // move to the next unit, wrapping around the curriculum -- so finishing
-    // Unit 1's last lesson lands on Unit 2's first. Nil once everything is
-    // done. With nothing completed yet this is simply Unit 1, Lesson 1.
+    // What the Learn page's "Up next" offers: literally the next lesson
+    // after the one most recently finished, in curriculum order -- NOT the
+    // first unfinished lesson in that lesson's unit. Those differ the moment
+    // someone skips ahead on purpose (ordinary lessons are never gated, see
+    // state(for:) -- "a menu, not a ladder", per LearnView.swift), which used
+    // to pull Up Next backward to whatever earlier lesson they'd
+    // deliberately passed over instead of acknowledging what they just did.
+    // Wraps around the whole curriculum, so finishing the last lesson lands
+    // back on the first. Nil once everything is done. With nothing completed
+    // yet this is simply Unit 1, Lesson 1.
     var upNext: (unit: LessonUnit, lesson: LessonNode, lessonNumber: Int)? {
-        let allUnits = units
-        guard !allUnits.isEmpty else { return nil }
+        let flat = units.flatMap { unit in
+            unit.lessons.enumerated().map { index, lesson in (unit: unit, lesson: lesson, lessonNumber: index + 1) }
+        }
+        guard !flat.isEmpty else { return nil }
 
         let startIndex = lastCompletedLessonID
-            .flatMap { id in allUnits.firstIndex { $0.lessons.contains { $0.id == id } } } ?? 0
+            .flatMap { id in flat.firstIndex { $0.lesson.id == id } }
+            .map { $0 + 1 } ?? 0
 
-        for offset in 0..<allUnits.count {
-            let unit = allUnits[(startIndex + offset) % allUnits.count]
+        for offset in 0..<flat.count {
+            let candidate = flat[(startIndex + offset) % flat.count]
             // `.available`, not merely "not completed" -- a locked checkpoint
-            // must never be offered as the next thing to do. With checkpoints
-            // sorted last in every unit the two are equivalent today (the
-            // checkpoint only becomes the first unfinished node once every
-            // lesson before it is done, which is exactly the unlock
-            // condition), but this stays correct if the order ever changes.
-            if let index = unit.lessons.firstIndex(where: { $0.state == .available }) {
-                return (unit, unit.lessons[index], index + 1)
+            // must never be offered as the next thing to do. Skipping past
+            // one here (rather than stopping) is what correctly falls
+            // through to the next unit once a locked checkpoint is the only
+            // thing standing between "last completed" and real content.
+            if candidate.lesson.state == .available {
+                return candidate
             }
         }
         return nil
@@ -416,7 +515,7 @@ final class LearnProgressStore: ObservableObject {
                     estimatedMinutes: content.estimatedMinutes
                 )
             }
-            return LessonUnit(id: "unit-\(unitNumber)", label: info.label, title: info.title, subtitle: info.subtitle, lessons: lessons)
+            return LessonUnit(id: "unit-\(unitNumber)", label: info.label, title: info.title, shortTitle: info.shortTitle, subtitle: info.subtitle, lessons: lessons)
         }
     }
 }
