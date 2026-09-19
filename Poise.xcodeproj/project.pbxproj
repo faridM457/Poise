@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		4B7C913047A022AF05CA9874 /* PocketTTS.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3B2A73BD70DC2E85640DA344 /* PocketTTS.xcframework */; };
-		ACC6D817BF86B16CFE007955 /* PocketTTS.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 3B2A73BD70DC2E85640DA344 /* PocketTTS.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		115E043E3058B86300442C82 /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = 115E043D3058B86300442C82 /* RevenueCat */; };
 		115E04403058B86B00442C82 /* RevenueCatUI in Frameworks */ = {isa = PBXBuildFile; productRef = 115E043F3058B86B00442C82 /* RevenueCatUI */; };
 		F0816664C246C754687CC597 /* GoogleMobileAds in Frameworks */ = {isa = PBXBuildFile; productRef = 58FE8F3419777352E0542D74 /* GoogleMobileAds */; };
@@ -22,7 +21,6 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
-				ACC6D817BF86B16CFE007955 /* PocketTTS.xcframework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
