@@ -37,6 +37,18 @@ final class LearnProgressStore: ObservableObject {
     // once per lesson, so a computed set rebuilt the whole thing 20 times per
     // render of the Learn grid.
     @Published private(set) var completedLessonIDs: Set<String> = []
+
+    // Badges newly crossed into "earned" by a completion, queued for the UI
+    // to announce -- separate from `earnedBadges` below, which only ever
+    // answers "is this earned right now" and has no memory of when. Never
+    // persisted: missing an announcement across a relaunch (the app was
+    // killed mid-banner) is a shrug, not a bug worth a stored flag for, and
+    // the badge itself is still there, unannounced, the next time it's
+    // computed. Appended to, not replaced, so two completions finished in
+    // quick succession both get their moment rather than the second
+    // clobbering the first. The UI never mutates this directly -- see
+    // `dismissCurrentBadgeAnnouncement()`.
+    @Published var pendingBadgeAnnouncements: [PoiseBadge] = []
     @Published private(set) var energyRemaining: Int
     // Whether the user is on Poise Pro. Owned by RevenueCat and pushed down
     // here by SubscriptionStore.applyEntitlement -- never set directly, or the
@@ -56,6 +68,11 @@ final class LearnProgressStore: ObservableObject {
             // if energy was sitting above the new, lower free cap) rather
             // than waiting for the next regen tick.
             energyRemaining = min(energyRemaining, energyCap)
+            // Same reasoning as energyRemaining just above: a lapsed Pro
+            // subscription can drop maxWeeklyGoal below whatever the user
+            // had set it to, so clamp it down right away rather than
+            // leaving a goal the current tier can't support.
+            weeklyGoal = min(weeklyGoal, maxWeeklyGoal)
             // The regen interval changed with the tier, so the pending
             // deadline was computed against the wrong one -- catch up now
             // rather than leaving a countdown that is off by hours.
@@ -72,10 +89,33 @@ final class LearnProgressStore: ObservableObject {
     // ever widens the energy cap -- lessons themselves were never Pro-gated,
     // just energy-gated, so that's the one lever a judge actually needs.
     @Published private(set) var isJudge: Bool {
-        didSet { CloudStore.store.set(isJudge, forKey: Self.judgeKey) }
+        didSet {
+            CloudStore.store.set(isJudge, forKey: Self.judgeKey)
+            // Losing judge status (rare, but possible) can shrink the cap
+            // just like a lapsed Pro subscription -- catch the weekly goal
+            // the same way, immediately rather than on next regen tick.
+            weeklyGoal = min(weeklyGoal, maxWeeklyGoal)
+        }
     }
     @Published private(set) var judgeEnergyCap: Int {
-        didSet { CloudStore.store.set(judgeEnergyCap, forKey: Self.judgeCapKey) }
+        didSet {
+            CloudStore.store.set(judgeEnergyCap, forKey: Self.judgeCapKey)
+            weeklyGoal = min(weeklyGoal, maxWeeklyGoal)
+        }
+    }
+
+    // The user's own target for conversations per week, shown on the Learn
+    // header and the Progress dashboard. Bounded by maxWeeklyGoal below so
+    // it can't be pushed past what the current energy tier can actually
+    // support. Defaults to 5, matching the constant this replaced, so
+    // nothing changes for an existing user until they open the new
+    // setting themselves.
+    //
+    // Persisted through CloudStore for the same reasons as isPremium
+    // above: correct on the very first frame after launch, and already
+    // right on a second device before any async lookup completes.
+    @Published private(set) var weeklyGoal: Int {
+        didSet { CloudStore.store.set(weeklyGoal, forKey: Self.weeklyGoalKey) }
     }
 
     private static let sessionsKey = "poise.sessions"
@@ -86,6 +126,8 @@ final class LearnProgressStore: ObservableObject {
     private static let premiumKey = "poise.isPremium"
     private static let judgeKey = "poise.isJudge"
     private static let judgeCapKey = "poise.judgeEnergyCap"
+    private static let weeklyGoalKey = "poise.weeklyGoal"
+    private static let defaultWeeklyGoal = 5
 
     private var lastRegenDate: Date
 
@@ -128,12 +170,15 @@ final class LearnProgressStore: ObservableObject {
         CloudStore.migrateIfNeeded(Self.energyKey)
         CloudStore.migrateIfNeeded(Self.lastRegenKey)
         CloudStore.migrateIfNeeded(Self.sessionsKey)
+        CloudStore.migrateIfNeeded(Self.weeklyGoalKey)
         let cloud = CloudStore.store
 
         isPremium = cloud.bool(forKey: Self.premiumKey)
         isJudge = cloud.bool(forKey: Self.judgeKey)
         judgeEnergyCap = cloud.object(forKey: Self.judgeCapKey) != nil
             ? Int(cloud.longLong(forKey: Self.judgeCapKey)) : Self.premiumEnergyCap
+        weeklyGoal = cloud.object(forKey: Self.weeklyGoalKey) != nil
+            ? Int(cloud.longLong(forKey: Self.weeklyGoalKey)) : Self.defaultWeeklyGoal
         #if DEBUG
         debugDayOffset = defaults.integer(forKey: Self.dayOffsetKey)
         // Defaults on: this was added because the roleplay is the slow part of
@@ -297,6 +342,9 @@ final class LearnProgressStore: ObservableObject {
         if changedKeys.contains(Self.judgeCapKey) {
             judgeEnergyCap = Int(cloud.longLong(forKey: Self.judgeCapKey))
         }
+        if changedKeys.contains(Self.weeklyGoalKey) {
+            weeklyGoal = Int(cloud.longLong(forKey: Self.weeklyGoalKey))
+        }
     }
 
     // Ordinary lessons are never gated: they are workplace scenarios a manager
@@ -354,11 +402,27 @@ final class LearnProgressStore: ObservableObject {
             criteriaMet: criteriaMet,
             criteriaTotal: criteriaTotal
         )
+        // Snapshot what's earned before this session lands, so afterwards a
+        // plain diff tells us which badges this exact completion crossed --
+        // never a single Optional, because one completion can finish a unit
+        // AND extend a streak in the same call, and both deserve their
+        // banner.
+        let earnedBefore = Set(earnedBadges.map(\.id))
         sessions.append(record)
         persistSessions()
         // The scenario you just played is spent. Clearing it here -- and only
         // here -- is what makes "the lesson changes after you finish it" true.
         ScenarioCache.invalidate(lessonID: lessonID)
+        // They just practised, so today's streak reminder (if one was
+        // pending from an earlier backgrounding) is now moot -- cancel it
+        // rather than let it fire later and nag about something already
+        // done. The come-back reminder is untouched: it isn't about today,
+        // it's about the days after this one if the app goes untouched.
+        NotificationService.shared.cancelStreakReminder()
+        let newlyEarned = earnedBadges.filter { !earnedBefore.contains($0.id) }
+        if !newlyEarned.isEmpty {
+            pendingBadgeAnnouncements.append(contentsOf: newlyEarned)
+        }
     }
 
     // MARK: - Testing helpers
@@ -587,7 +651,19 @@ extension LearnProgressStore {
 
     // MARK: Weekly goal
 
-    static let weeklyGoal = 5
+    // The ceiling on the user-configurable weeklyGoal above, tied to the
+    // energy tier's real cap rather than a made-up number: free (cap 3)
+    // tops out at 6, Pro (cap 12) at 24, and a judge account (cap 999) at
+    // 1998 -- a ceiling no judge account will ever actually reach. Always
+    // computed fresh from energyCap, never cached, so it reflects a tier
+    // change (e.g. a lapsed Pro subscription) the moment it happens.
+    var maxWeeklyGoal: Int { energyCap * 2 }
+
+    // The only way to change weeklyGoal -- clamps to 1...maxWeeklyGoal so
+    // a caller can never push it out of bounds even by mistake.
+    func setWeeklyGoal(_ value: Int) {
+        weeklyGoal = min(max(1, value), maxWeeklyGoal)
+    }
 
     // Conversations finished in the last 7 days including today. Counts
     // sessions, not days -- two conversations in an evening are two.
@@ -596,7 +672,7 @@ extension LearnProgressStore {
         return sessions.filter { $0.finishedAt >= cutoff }.count
     }
 
-    var remainingThisWeek: Int { max(0, Self.weeklyGoal - conversationsThisWeek) }
+    var remainingThisWeek: Int { max(0, weeklyGoal - conversationsThisWeek) }
 
     // The seven days ending today, for the Learn page's activity strip.
     var weekEndingToday: [PracticeDay] {
@@ -679,4 +755,14 @@ extension LearnProgressStore {
     }
 
     var earnedBadges: [PoiseBadge] { PoiseBadgeCatalogue.all.filter(hasEarned) }
+
+    // The only way the announcement queue shrinks -- pops the front rather
+    // than letting the UI splice the array itself, so there's exactly one
+    // place that can get "which one just finished showing" wrong. Called once
+    // a banner's auto-dismiss timer fires or the user taps it away; safe to
+    // call on an empty queue (e.g. a duplicate tap racing the timer).
+    func dismissCurrentBadgeAnnouncement() {
+        guard !pendingBadgeAnnouncements.isEmpty else { return }
+        pendingBadgeAnnouncements.removeFirst()
+    }
 }

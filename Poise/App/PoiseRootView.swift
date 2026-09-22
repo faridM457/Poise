@@ -4,6 +4,11 @@ struct PoiseRootView: View {
     @State private var selectedTab: AppTab = .learn
     @State private var showSignInPrompt = false
     @Environment(\.scenePhase) private var scenePhase
+    // Watched here, not inside any one tab, because a badge earned by
+    // finishing a lesson is announced only after LiveLessonFlowView has
+    // already dismissed back out to whichever tab was underneath it -- root
+    // is the one place guaranteed to still be around to show it.
+    @ObservedObject private var progressStore = LearnProgressStore.shared
 
     var body: some View {
         // No NavigationStack per tab. None of the three screens pushes
@@ -59,6 +64,13 @@ struct PoiseRootView: View {
                 // A subscription can lapse, be cancelled, or be restored on
                 // another device while the app is backgrounded.
                 Task { await SubscriptionStore.shared.refreshEntitlement() }
+                // They're back -- the come-back nudge no longer applies.
+                // The streak reminder is left alone: merely opening the app
+                // isn't the same as having practised (only
+                // LearnProgressStore.recordCompletion cancels that one).
+                NotificationService.shared.cancelComeBackReminder()
+            } else if newPhase == .background {
+                scheduleBackgroundReminders()
             }
         }
         // Once, ever, per install -- see AccountStore.shouldShowSignInPrompt
@@ -68,6 +80,70 @@ struct PoiseRootView: View {
         .sheet(isPresented: $showSignInPrompt, onDismiss: { AccountStore.shared.markSignInPromptShown() }) {
             SignInPromptSheet(onDismiss: { showSignInPrompt = false })
         }
+        // Only ever the front of the queue -- one banner on screen at a
+        // time, even if a single completion earned several badges at once.
+        // Keyed on the badge's own id so a new banner sliding in after the
+        // old one is dismissed is a fresh view (a fresh auto-dismiss timer,
+        // not the outgoing one's timer racing to close a card that isn't
+        // its own anymore).
+        .overlay(alignment: .top) {
+            if let badge = progressStore.pendingBadgeAnnouncements.first {
+                BadgeEarnedBanner(badge: badge) {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                        progressStore.dismissCurrentBadgeAnnouncement()
+                    }
+                }
+                .id(badge.id)
+                .padding(.horizontal, 16)
+                // Clears PoiseTopBar (each tab's own safeAreaInset, roughly
+                // logo/chip row height plus its own top/bottom padding) --
+                // without this the banner lands right on top of the streak
+                // and energy chips instead of below them.
+                .padding(.top, 72)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .zIndex(1)
+            }
+        }
+        .animation(.spring(response: 0.32, dampingFraction: 0.82), value: progressStore.pendingBadgeAnnouncements.first?.id)
+    }
+
+    // Backgrounding is the one moment both local reminders get (re)computed
+    // -- there's no server ticking these on a schedule, so this app has to
+    // set its own alarm clock on the way out every time. Never requests
+    // permission itself (see NotificationService.isAuthorized's doc): that
+    // only ever happens from the explicit toggle in Profile's PrivacyCard.
+    private func scheduleBackgroundReminders() {
+        Task {
+            guard await NotificationService.isAuthorized else { return }
+            let store = LearnProgressStore.shared
+            // Only worth nagging about if there's a streak alive to lose
+            // and today hasn't already covered it.
+            if store.currentStreak > 0 && !store.practisedToday {
+                NotificationService.shared.scheduleStreakReminder(
+                    streakLength: store.currentStreak,
+                    at: streakReminderDate()
+                )
+            }
+            // Unconditional, unlike the streak reminder -- even a
+            // brand-new account with no streak yet has an "up next".
+            NotificationService.shared.scheduleComeBackReminder(
+                afterDays: 2,
+                upNextTitle: store.upNext?.lesson.title
+            )
+        }
+    }
+
+    // 7pm local, today -- late enough that most people have had a chance to
+    // fit practice in, early enough it doesn't land at midnight. If it's
+    // already past 7pm when the app backgrounds, firing "later today" a
+    // couple of hours out still beats silently deferring the whole reminder
+    // to tomorrow, which would miss the streak's actual deadline (midnight).
+    private func streakReminderDate() -> Date {
+        let now = Date()
+        if let sevenPM = Calendar.current.date(bySettingHour: 19, minute: 0, second: 0, of: now), sevenPM > now {
+            return sevenPM
+        }
+        return now.addingTimeInterval(2 * 60 * 60)
     }
 }
 

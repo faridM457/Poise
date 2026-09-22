@@ -28,7 +28,7 @@ struct ProgressDashboardView: View {
                 PoiseSection(title: "Weekly goal") {
                     WeeklyGoalCard(
                         completed: store.conversationsThisWeek,
-                        goal: LearnProgressStore.weeklyGoal,
+                        goal: store.weeklyGoal,
                         remaining: store.remainingThisWeek
                     )
                 }

@@ -41,7 +41,7 @@ struct ProfileView: View {
                 }
 
                 PoiseSection(title: "Account & settings") {
-                    SettingsCard(profile: profile, onReset: { showResetConfirm = true })
+                    SettingsCard(profile: profile, store: store, onReset: { showResetConfirm = true })
                 }
 
                 #if DEBUG
@@ -356,6 +356,12 @@ private struct PrivacyCard: View {
     // on that system prompt, this snaps back to off on its own, because
     // it's reading truth, not holding a separate stored preference.
     @State private var micAuthorized = SpeechRecognitionService.isAuthorized
+    // Seeded false, then corrected as soon as the view appears -- unlike
+    // SFSpeechRecognizer.authorizationStatus(), UNUserNotificationCenter's
+    // settings only come back through an async call (see
+    // NotificationService.isAuthorized), so there's no synchronous truth to
+    // seed this @State with the way micAuthorized above is seeded.
+    @State private var notificationsAuthorized = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -369,6 +375,12 @@ private struct PrivacyCard: View {
                     )
                     PoiseDivider().padding(.horizontal, 16)
                     SettingsToggleRow(
+                        title: "Practice reminders",
+                        subtitle: "A nudge to keep a streak alive, or a heads-up that your next lesson's ready.",
+                        isOn: Binding(get: { notificationsAuthorized }, set: { _ in handleNotificationToggle() })
+                    )
+                    PoiseDivider().padding(.horizontal, 16)
+                    SettingsToggleRow(
                         title: "Save recordings",
                         subtitle: "Keep the audio from a session for your own review. Off by default. Coming soon.",
                         isOn: .constant(false)
@@ -379,11 +391,17 @@ private struct PrivacyCard: View {
 
             FootNote("Nothing is recorded or uploaded. These settings stay on this device.")
         }
+        .task {
+            notificationsAuthorized = await NotificationService.isAuthorized
+        }
         // Catches a change made in Settings while this screen was
         // backgrounded -- there's no push notification for permission
         // changes, foregrounding is the only reliable moment to re-check.
         .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .active { micAuthorized = SpeechRecognitionService.isAuthorized }
+            if newPhase == .active {
+                micAuthorized = SpeechRecognitionService.isAuthorized
+                Task { notificationsAuthorized = await NotificationService.isAuthorized }
+            }
         }
     }
 
@@ -397,10 +415,27 @@ private struct PrivacyCard: View {
             UIApplication.shared.open(url)
         }
     }
+
+    private func handleNotificationToggle() {
+        Task {
+            if await NotificationService.isUndetermined {
+                _ = await NotificationService.requestAuthorization()
+                notificationsAuthorized = await NotificationService.isAuthorized
+            } else if let url = URL(string: UIApplication.openSettingsURLString) {
+                // Inside this Task's async context, UIApplication.open's
+                // completion-handler variant surfaces its generated async
+                // overload instead of the fire-and-forget sync one
+                // handleMicToggle uses in its own (synchronous) branch --
+                // so this awaits it explicitly rather than fighting that.
+                _ = await UIApplication.shared.open(url)
+            }
+        }
+    }
 }
 
 private struct SettingsCard: View {
     @ObservedObject var profile: UserProfileStore
+    @ObservedObject var store: LearnProgressStore
     let onReset: () -> Void
 
     var body: some View {
@@ -412,6 +447,19 @@ private struct SettingsCard: View {
                 SettingsValueRow(title: "Practice language", value: profile.practiceLanguage)
                 PoiseDivider().padding(.horizontal, 16)
                 SettingsToggleRow(title: "Sound effects", subtitle: nil, isOn: $profile.soundEffects)
+                PoiseDivider().padding(.horizontal, 16)
+                // Range is 1...store.maxWeeklyGoal rather than a cached
+                // value, so a Pro downgrade (or a judge redemption) is
+                // reflected the moment it happens, not just after relaunch.
+                SettingsStepperRow(
+                    title: "Weekly goal",
+                    value: "\(store.weeklyGoal) conversation\(store.weeklyGoal == 1 ? "" : "s")",
+                    count: Binding(
+                        get: { store.weeklyGoal },
+                        set: { store.setWeeklyGoal($0) }
+                    ),
+                    range: 1...store.maxWeeklyGoal
+                )
                 PoiseDivider().padding(.horizontal, 16)
                 Button(action: onReset) {
                     HStack {
@@ -633,6 +681,42 @@ private struct SettingsValueRow: View {
             Text(value)
                 .font(PoiseType.subhead(.semibold))
                 .foregroundStyle(Color.poiseMuted)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 16)
+    }
+}
+
+// Visually identical to SettingsValueRow -- same title/value type ladder and
+// padding -- but with a native Stepper standing in for the reset button's
+// static text, since the value here is something the user actually sets.
+private struct SettingsStepperRow: View {
+    let title: String
+    let value: String
+    @Binding var count: Int
+    let range: ClosedRange<Int>
+
+    var body: some View {
+        HStack {
+            Text(title)
+                .font(PoiseType.body(.bold))
+                .foregroundStyle(Color.poiseNavy)
+            Spacer(minLength: 12)
+            Text(value)
+                .font(PoiseType.subhead(.semibold))
+                .foregroundStyle(Color.poiseMuted)
+            Stepper("", value: $count, in: range)
+                .labelsHidden()
+                // Matches SettingsToggleRow's tint -- the -/+ control is
+                // interactive chrome, same as a switch, so it should match
+                // the app's one accent rather than the system default.
+                .tint(.poiseBlueDark)
+                // Left as its own accessibility element (not combined into
+                // the row) so VoiceOver keeps the Stepper's increment/
+                // decrement actions; this just gives it a clearer label
+                // and the current value to read out.
+                .accessibilityLabel(title)
+                .accessibilityValue(value)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 16)

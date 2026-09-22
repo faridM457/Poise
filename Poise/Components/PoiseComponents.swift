@@ -625,3 +625,69 @@ extension PoiseModal where Content == EmptyView {
         )
     }
 }
+
+// MARK: - Badge earned banner
+
+// Earning a badge (see LearnProgressStore.pendingBadgeAnnouncements) is a
+// bonus, not a checkpoint -- it should announce itself and get out of the
+// way on its own, never make someone dismiss it before they can go back to
+// what they were doing. That rules out reusing PoiseModal above: its scrim
+// and centered card are built for something that blocks until acknowledged
+// (the out-of-energy alert), which is the wrong shape for a "nice, you got
+// one" moment. This is a compact, non-blocking card instead -- no scrim,
+// pinned near the top rather than centered, and it dismisses itself.
+//
+// Hosted at root level (see PoiseRootView), not inside the lesson flow: by
+// the time a badge is announced, `recordAndFinish` has often already called
+// `onFinish(true)` and returned the user to whichever tab they were on
+// before the lesson.
+struct BadgeEarnedBanner: View {
+    let badge: PoiseBadge
+    let onDismiss: () -> Void
+
+    // Long enough to actually read a short title, short enough that nobody
+    // is left waiting on it -- this is meant to feel like a toast, not a
+    // screen that needs clearing.
+    private static let displayDuration: UInt64 = 3_000_000_000
+
+    var body: some View {
+        Button(action: onDismiss) {
+            HStack(spacing: 12) {
+                PoiseIconBadge(icon: badge.icon, color: .poiseGold, size: 44)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    PoiseEyebrow(text: "Badge earned", color: .poiseGold)
+                    Text(badge.title)
+                        .font(PoiseType.body(.bold))
+                        .foregroundStyle(Color.poiseNavy)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(14)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(Color.poiseBorder, lineWidth: 1)
+            )
+            // A real shadow, not a hairline -- this card floats above the
+            // page rather than sitting flush with it like the top bar it's
+            // layered over.
+            .shadow(color: .poiseNavy.opacity(0.16), radius: 20, x: 0, y: 8)
+        }
+        .buttonStyle(PoisePressableStyle())
+        // A tap dismisses early. Nothing else about this view is
+        // interactive, so the whole card is fair game as the tap target
+        // rather than needing its own small close button.
+        .accessibilityLabel("Badge earned: \(badge.title). Double tap to dismiss.")
+        .task {
+            // Cancelled for free the moment this view leaves the tree --
+            // which is exactly what happens when the caller pops the queue,
+            // whether that pop came from this timer or from the tap above.
+            try? await Task.sleep(nanoseconds: Self.displayDuration)
+            onDismiss()
+        }
+    }
+}

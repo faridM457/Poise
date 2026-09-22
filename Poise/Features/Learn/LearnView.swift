@@ -85,7 +85,7 @@ struct LearnView: View {
             PoiseSection(title: "Explore units", showsRule: true) { unitGrid }
 
             PoiseSection(title: "This week", showsRule: true) {
-                WeeklyActivityCard(week: store.weekEndingToday, completed: store.conversationsThisWeek, goal: LearnProgressStore.weeklyGoal)
+                WeeklyActivityCard(week: store.weekEndingToday, completed: store.conversationsThisWeek, goal: store.weeklyGoal)
             }
 
             // Small tail of breathing room. The tab bar is a bottom
