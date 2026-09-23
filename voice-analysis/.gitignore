@@ -1,0 +1,14 @@
+node_modules/
+.env
+recordings/
+models/
+reports/
+.cache/
+.build/
+.swiftpm/
+*.wav
+*.caf
+*.m4a
+*.mp3
+*.webm
+*.bin

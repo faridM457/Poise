@@ -1,0 +1,13 @@
+{
+  "samples": [
+    {
+      "id": "turn-1",
+      "speakerId": "replace-with-consented-speaker-id",
+      "split": "held-out",
+      "reference": {
+        "text": "Replace this example with the words actually spoken, including um and uh.",
+        "pauses": []
+      }
+    }
+  ]
+}
