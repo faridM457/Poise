@@ -33,7 +33,8 @@ enum DeviceAudioDecoder {
                         inputStatus.pointee = .endOfStream
                         return nil
                     }
-                    try file.read(into: input, frameCount: min(requested, input.frameCapacity, AVAudioFrameCount(remaining)))
+                    let boundedRemaining = AVAudioFrameCount(min(remaining, AVAudioFramePosition(input.frameCapacity)))
+                    try file.read(into: input, frameCount: min(requested, boundedRemaining))
                     inputStatus.pointee = input.frameLength == 0 ? .endOfStream : .haveData
                     return input.frameLength == 0 ? nil : input
                 } catch {

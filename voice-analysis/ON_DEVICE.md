@@ -5,8 +5,10 @@ returns an in-memory JSON report. It targets iOS 26+ and macOS 26+. App micropho
 capture, persistence, UI, uploads, and LLM requests are deliberately not connected.
 No existing app project or source file is modified.
 
-For the local, validated transcript/statistics handoff to future LLM feedback,
-see [LLM_PAYLOAD.md](LLM_PAYLOAD.md). No sending or persistence is implemented.
+For the end-of-conversation handoff, see
+[VOICE_ANALYSIS_LLM_INTEGRATION.md](VOICE_ANALYSIS_LLM_INTEGRATION.md).
+[LLM_PAYLOAD.md](LLM_PAYLOAD.md) documents its nested per-turn contract.
+No sending or persistence is implemented.
 
 ## Execution
 
@@ -51,9 +53,10 @@ is involved. Work runs off the main actor. Files are not rewritten or deleted.
 Limits: 16 MiB/file, 90 seconds, one or two channels. Bounds are checked before
 speech work. Cancellation propagates to transcription and between decode buffers;
 the synchronous JavaScript calculation cannot be interrupted mid-loop and its
-result is discarded if cancelled. There is currently no native wall-clock timeout
-for model installation/transcription (the reference report config's `timeoutMs`
-belongs to the Node runner, not this Swift API). Speech/model errors throw; invalid
+result is discarded if cancelled. A default 180-second cooperative deadline now
+requests cancellation; system model operations or synchronous JavaScript may delay
+cleanup. Override with `timeoutSeconds` (up to 1800 seconds). This is not a force-kill
+deadline. Speech/model errors throw with stage/domain/code; invalid
 word timing returns an explicit failed report. The caller should inspect report
 status and metric reasons, not treat every returned JSON object as success.
 

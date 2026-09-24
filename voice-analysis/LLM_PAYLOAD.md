@@ -1,5 +1,9 @@
 # Voice feedback input contract v1
 
+This is the per-turn contract. The final lesson request should use the full
+[conversation payload](VOICE_ANALYSIS_LLM_INTEGRATION.md), which nests this data
+alongside all dialogue, aggregates, and coverage. Do not send only the last turn.
+
 `VoiceLLMPayload.build` is a pure Swift adapter from a finished voice report to
 the data a future feedback request can include. It performs no storage, networking,
 prompt generation, or LLM calls. It is included in the existing Swift library.

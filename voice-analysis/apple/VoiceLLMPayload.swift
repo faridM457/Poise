@@ -61,10 +61,14 @@ public struct VoiceLLMPayload: Sendable {
         }
         // An explicit allowlist prevents raw audio, file paths, config, and future
         // internal report fields from silently becoming remote-model inputs.
-        let units = ["speakingRateWpm": "words/minute", "detectedFillersPer100Words": "events/100 words",
+        var units = ["speakingRateWpm": "words/minute", "detectedFillersPer100Words": "events/100 words",
                      "medianPitchHz": "Hz", "pitchRangeSemitones": "semitones", "pitchCoverage": "ratio",
                      "reliablePitchSeconds": "seconds", "pauseRatio": "ratio", "pauseSeconds": "seconds",
                      "timestampGapRatio": "ratio", "volumeSpreadDb": "dB"]
+        for (name, unit) in ["responseSeconds": "seconds", "activeSeconds": "seconds",
+                             "longestPauseSeconds": "seconds", "clippedFraction": "ratio"] where metrics[name] != nil {
+            units[name] = unit
+        }
         var selectedMetrics: [String: Any] = [:]
         for (name, unit) in units {
             guard let metric = metrics[name] as? [String: Any],

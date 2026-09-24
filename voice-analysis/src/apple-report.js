@@ -14,12 +14,12 @@ export function buildAppleReport(transcript, acoustic, config) {
   const issues = [...transcript.timingIssues];
   let previousEnd = 0;
   for (const word of transcript.words) {
-    if (typeof word.text !== 'string' || !word.text.trim() || /\s/.test(word.text) ||
+    if (!word || typeof word.text !== 'string' || !word.text.trim() || /\s/.test(word.text) ||
         !Number.isFinite(word.start) || !Number.isFinite(word.end) || word.start < 0 ||
         word.end <= word.start || word.end > transcript.duration + 0.05 || word.start < previousEnd - 0.001) {
       issues.push('invalid_word_timing');
     }
-    previousEnd = word.end;
+    previousEnd = word?.end;
   }
   if (!transcript.words.length) issues.push('word_timing_unavailable');
   const timingsValid = issues.length === 0;
@@ -69,5 +69,6 @@ export function buildAppleReport(transcript, acoustic, config) {
   };
   report.scoring = scoreVoiceMetrics(report.metrics, config);
   report.overallVoiceScore = report.scoring.overallVoiceScore;
+  if (timingsValid && Object.values(report.metrics).some((m) => m.status === 'unavailable')) report.status = 'partial';
   return report;
 }

@@ -45,6 +45,7 @@ test('Incomplete or invalid timings fail explicitly without computing partial fi
     (t) => { t.words[1].start = 0; },
     (t) => { t.timingIssues.push('multiword_timing_span'); },
     (t) => { t.words = []; },
+    (t) => { t.words[0] = null; },
   ]) {
     const source = transcript();
     modify(source);
@@ -63,4 +64,5 @@ test('A zero detected filler count remains unvalidated and short clips do not ge
   assert.equal(report.detectedFillerCount, 0);
   assert.equal(report.transcript.fillerPreservation, 'unvalidated');
   assert.equal(report.metrics.speakingRateWpm.value, null);
+  assert.equal(report.status, 'partial');
 });

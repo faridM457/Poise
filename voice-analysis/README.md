@@ -1,5 +1,10 @@
 # Standalone voice analysis
 
+**End-of-conversation handoff:**
+[VOICE_ANALYSIS_LLM_INTEGRATION.md](VOICE_ANALYSIS_LLM_INTEGRATION.md) documents
+ordered dialogue, per-turn data, time-weighted aggregates, and explicit coverage.
+This assembly is on-device and makes no LLM calls or new conversation score.
+
 **On-device package:** see [ON_DEVICE.md](ON_DEVICE.md). The Swift library now runs
 decoding, Apple transcription, Pitchy measurements, and scoring entirely on device
 using AVFoundation, Speech, and JavaScriptCore. Microphone hookup and storage are
