@@ -21,7 +21,10 @@ import UIKit
 // state(for:) for why the "pick what you need" rule doesn't extend to it.
 struct LearnView: View {
     @ObservedObject private var store = LearnProgressStore.shared
+    @ObservedObject private var subscriptions = SubscriptionStore.shared
     @State private var activeLesson: LessonNode?
+    @State private var showCustomScenario = false
+    @State private var showPaywall = false
     // The unit whose lesson list is open. Presented as a sheet rather than a
     // pushed screen: a NavigationStack here would swallow the tab bar's bottom
     // safeAreaInset (see PoiseRootView), and this is a pick-one-and-go detour,
@@ -72,6 +75,13 @@ struct LearnView: View {
                 _ = completed
             }
         }
+        .fullScreenCover(isPresented: $showCustomScenario) {
+            CustomScenarioFlowView()
+        }
+        .sheet(isPresented: $showPaywall) {
+            PaywallSheet(subscriptions: subscriptions)
+                .presentationBackground(Color.poiseCanvas)
+        }
     }
 
     // Split out of `body` -- inline, the whole page was one expression and
@@ -87,6 +97,8 @@ struct LearnView: View {
             PoiseSection(title: "This week", showsRule: true) {
                 WeeklyActivityCard(week: store.weekEndingToday, completed: store.conversationsThisWeek, goal: LearnProgressStore.weeklyGoal)
             }
+
+            CustomScenarioCard(action: openCustomScenario)
 
             // Small tail of breathing room. The tab bar is a bottom
             // safeAreaInset (see PoiseRootView), so the scroll view already
@@ -124,6 +136,14 @@ struct LearnView: View {
     // then had to describe as free.
     private func attemptStart(_ lesson: LessonNode) {
         activeLesson = lesson
+    }
+
+    private func openCustomScenario() {
+        if subscriptions.isPro {
+            showCustomScenario = true
+        } else {
+            showPaywall = true
+        }
     }
 
     private func accentColor(for index: Int) -> Color {
