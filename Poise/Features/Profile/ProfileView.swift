@@ -695,7 +695,7 @@ fileprivate func trialPeriodText(for package: Package, eligible: Bool) -> String
     return "\(period.value) \(unit)\(period.value == 1 ? "" : "s")"
 }
 
-private struct PaywallSheet: View {
+struct PaywallSheet: View {
     @ObservedObject var subscriptions: SubscriptionStore
     @Environment(\.dismiss) private var dismiss
 
