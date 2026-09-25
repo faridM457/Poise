@@ -1,17 +1,11 @@
 import AVFoundation
 import Combine
 import Speech
+import PoiseVoiceAnalysis
+import UIKit
 
-// On-device speech-to-text via Apple's Speech framework (SFSpeechRecognizer),
-// so the user can speak their turn instead of typing it. Deliberately NOT
-// whisper.cpp: that has a separate, unresolved filler-word-stripping issue
-// investigated earlier this session, but basic mic input for turn CONTENT
-// doesn't need perfect filler retention -- only a future delivery-analysis
-// grading feature would, and that's out of scope here.
-//
-// Non-destructive by design: only ever fills the composer's text field via
-// `transcript`, never sends anything itself -- same pattern as the browser
-// mic button built earlier in conversation-engine.
+// Live on-device dictation fills the composer without sending. The same tap
+// saves an unprocessed recording for analysis after the user accepts the turn.
 @MainActor
 final class SpeechRecognitionService: NSObject, ObservableObject {
     enum ServiceError: Error, LocalizedError {
@@ -29,6 +23,8 @@ final class SpeechRecognitionService: NSObject, ObservableObject {
     }
 
     @Published private(set) var isListening = false
+    @Published private(set) var isStarting = false
+    @Published private(set) var isFinalizing = false
     @Published var transcript = ""
     @Published var errorMessage: String?
 
@@ -36,6 +32,35 @@ final class SpeechRecognitionService: NSObject, ObservableObject {
     private let audioEngine = AVAudioEngine()
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
+    private var writer: VoiceRecordingWriter?
+    private var finalization: Task<VoiceTurnInput, Never>?
+    private var draft: VoiceTurnInput = .typed
+    private var captureID = UUID()
+    private var draftID = UUID()
+    private var observers = Set<AnyCancellable>()
+    var isCapturing: Bool { isListening || isStarting || isFinalizing }
+
+    override init() {
+        super.init()
+        for name in [AVAudioSession.interruptionNotification, AVAudioSession.routeChangeNotification,
+                     UIApplication.didEnterBackgroundNotification, AVAudioEngine.configurationChangeNotification] {
+            NotificationCenter.default.publisher(for: name).sink { [weak self] notification in
+                let routeReason = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+                let interruption = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+                if name == AVAudioSession.routeChangeNotification,
+                   routeReason != AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue,
+                   routeReason != AVAudioSession.RouteChangeReason.newDeviceAvailable.rawValue { return }
+                if name == AVAudioSession.interruptionNotification,
+                   interruption != AVAudioSession.InterruptionType.began.rawValue { return }
+                Task { @MainActor in
+                    guard let self, self.isListening else { return }
+                    if name == AVAudioEngine.configurationChangeNotification, self.audioEngine.isRunning { return }
+                    self.errorMessage = "Recording was interrupted. Record again or send the text without voice analysis."
+                    self.stopListening(failure: .interrupted)
+                }
+            }.store(in: &observers)
+        }
+    }
 
     // Both permissions this needs, read synchronously with no prompt --
     // used to drive Profile's real "Microphone access" toggle: whether to
@@ -69,24 +94,27 @@ final class SpeechRecognitionService: NSObject, ObservableObject {
     }
 
     func toggleListening() {
-        if isListening {
+        if isListening || isStarting {
             stopListening()
-        } else {
-            Task { await startListening() }
+        } else if !isFinalizing {
+            discardDraft()
+            isStarting = true
+            let id = captureID
+            Task { await startListening(id: id) }
         }
     }
 
-    private func startListening() async {
-        guard !isListening else { return }
+    private func startListening(id: UUID) async {
         errorMessage = nil
-
         let authorized = await Self.requestAuthorization()
+        guard captureID == id, isStarting else { return }
+        defer { isStarting = false }
         guard authorized else {
             errorMessage = ServiceError.permissionDenied.localizedDescription
             return
         }
 
-        guard let recognizer, recognizer.isAvailable else {
+        guard let recognizer, recognizer.isAvailable, recognizer.supportsOnDeviceRecognition else {
             errorMessage = ServiceError.recognizerUnavailable.localizedDescription
             return
         }
@@ -98,13 +126,25 @@ final class SpeechRecognitionService: NSObject, ObservableObject {
 
             let inputNode = audioEngine.inputNode
             let format = inputNode.outputFormat(forBus: 0)
+            let recording = try VoiceRecordingWriter(format: format)
+            writer = recording
+            let newRequest = SFSpeechAudioBufferRecognitionRequest()
+            newRequest.shouldReportPartialResults = true
+            newRequest.taskHint = .dictation
+            newRequest.requiresOnDeviceRecognition = true
+            request = newRequest
             inputNode.removeTap(onBus: 0)
-            // Feeds whichever request is CURRENT at the time each buffer
-            // arrives (not a fixed request captured once) -- required so
-            // the on-device -> server-based fallback below can swap in a
-            // fresh request without restarting the audio engine.
+            // Capture immutable per-take references; never read main-actor state at the tap.
             inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
-                self?.request?.append(buffer)
+                if recording.append(buffer) {
+                    newRequest.append(buffer)
+                } else {
+                    Task { @MainActor in
+                        guard let self, self.captureID == id else { return }
+                        self.errorMessage = "Recording reached a safety limit. Please record a shorter response."
+                        self.stopListening(failure: .invalidAudio)
+                    }
+                }
             }
 
             audioEngine.prepare()
@@ -113,69 +153,71 @@ final class SpeechRecognitionService: NSObject, ObservableObject {
             transcript = ""
             isListening = true
 
-            // Prefer on-device recognition first: server-based (network)
-            // recognition is well-documented as unreliable in the iOS
-            // Simulator, independent of the Simulator's mic-audio
-            // passthrough (which works fine for raw AVAudioEngine capture).
-            // But on-device recognition has its OWN separate Simulator
-            // failure mode -- its models are provisioned via Apple's
-            // MobileAsset system and are frequently missing on Simulator
-            // devices (kLSRErrorDomain code 300, "Failed to initialize
-            // recognizer") -- so if that happens, fall back once to
-            // server-based recognition rather than giving up outright.
-            beginRecognitionTask(recognizer: recognizer, preferOnDevice: recognizer.supportsOnDeviceRecognition, isFallback: false)
-        } catch {
-            errorMessage = error.localizedDescription
-            stopListening()
-        }
-    }
-
-    private func beginRecognitionTask(recognizer: SFSpeechRecognizer, preferOnDevice: Bool, isFallback: Bool) {
-        task?.cancel()
-        request?.endAudio()
-
-        let newRequest = SFSpeechAudioBufferRecognitionRequest()
-        newRequest.shouldReportPartialResults = true
-        newRequest.taskHint = .dictation
-        if preferOnDevice {
-            newRequest.requiresOnDeviceRecognition = true
-        }
-        request = newRequest
-
-        task = recognizer.recognitionTask(with: newRequest) { [weak self] result, error in
-            guard let self else { return }
-            Task { @MainActor in
-                if let result {
-                    self.transcript = result.bestTranscription.formattedString
-                }
-                if let error {
-                    print("[SpeechRecognitionService] recognition error (onDevice=\(preferOnDevice), fallback=\(isFallback)): \(error)")
-                    // One fallback attempt maximum -- only retry if this was
-                    // the first (on-device) attempt, never from a fallback.
-                    if preferOnDevice && !isFallback {
-                        self.beginRecognitionTask(recognizer: recognizer, preferOnDevice: false, isFallback: true)
-                        return
-                    }
-                    self.errorMessage = error.localizedDescription
-                    self.stopListening()
-                    return
-                }
-                if result?.isFinal == true {
-                    self.stopListening()
+            task = recognizer.recognitionTask(with: newRequest) { [weak self] result, error in
+                let text = result?.bestTranscription.formattedString
+                let final = result?.isFinal == true
+                let failed = error != nil
+                Task { @MainActor in
+                    guard let self, self.captureID == id, self.isListening else { return }
+                    if let text { self.transcript = text }
+                    if failed {
+                        self.errorMessage = "Live dictation stopped. You can edit the text before sending."
+                        self.stopListening()
+                    } else if final { self.stopListening() }
                 }
             }
+        } catch {
+            errorMessage = "Recording could not start. You can still type your response."
+            stopListening(failure: .invalidAudio)
         }
     }
 
-    func stopListening() {
-        guard isListening || audioEngine.isRunning else { return }
-        audioEngine.stop()
-        audioEngine.inputNode.removeTap(onBus: 0)
+    func stopListening(failure: VoiceTurnFailure? = nil) {
+        captureID = UUID() // Invalidates pending permission requests and late dictation callbacks.
+        isStarting = false
+        let wasRunning = isListening || audioEngine.isRunning || writer != nil
+        if wasRunning {
+            audioEngine.stop()
+            audioEngine.inputNode.removeTap(onBus: 0)
+        }
         request?.endAudio()
         task?.cancel()
         task = nil
         request = nil
+        if let recording = writer {
+            writer = nil
+            isFinalizing = true
+            let currentDraft = draftID
+            finalization = Task { [weak self] in
+                let input: VoiceTurnInput
+                do {
+                    let clip = try await recording.finish()
+                    input = failure.map { .failed($0) } ?? .recorded(clip)
+                } catch { input = .failed(failure ?? .invalidAudio) }
+                if let self, self.draftID == currentDraft {
+                    self.draft = input
+                    self.isFinalizing = false
+                }
+                return input
+            }
+        }
         isListening = false
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        if wasRunning { try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation) }
+    }
+
+    /// Retains the draft for retry until the caller confirms acceptance.
+    func finalizedInput() async -> VoiceTurnInput {
+        stopListening()
+        if let finalization { return await finalization.value }
+        return draft
+    }
+
+    func discardDraft() {
+        stopListening()
+        draftID = UUID()
+        finalization = nil
+        draft = .typed
+        isFinalizing = false
+        transcript = ""
     }
 }

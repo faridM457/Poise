@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import PoiseVoiceAnalysis
 
 // Drives one real, server-generated lesson conversation end to end:
 // scenario -> opening line -> per-turn generation+grading -> feedback.
@@ -23,6 +24,13 @@ final class LiveLessonViewModel: ObservableObject {
     static let mockTurnLimit: Int? = nil
 
     let lessonId: String
+    let voiceSession = VoiceConversationSession()
+    @Published private(set) var voicePayload: Data?
+    @Published private(set) var voiceAnalysisError: String?
+    private var voiceFinishTask: Task<Void, Never>?
+    private var suppressNPCPlayback = false
+    private var playbackGeneration = UUID()
+    private var isAbandoned = false
 
     @Published private(set) var isLoadingScenario = true
     @Published private(set) var isSendingTurn = false
@@ -72,10 +80,24 @@ final class LiveLessonViewModel: ObservableObject {
     // trade-off here, not a bug.
     @available(iOS 17.0, *)
     private func presentNPCMessage(_ message: ConversationMessage) async {
+        guard !isAbandoned else { return }
+        do { try voiceSession.appendNPC(id: message.id.uuidString, text: message.text, speakerName: message.characterName) }
+        catch { voiceAnalysisError = error.localizedDescription }
+        if suppressNPCPlayback {
+            messages.append(message)
+            return
+        }
         isSynthesizingSpeech = true
         currentSpeechDuration = nil
+        let generation = playbackGeneration
         do {
             let speech = try await NPCVoiceService.shared.speak(message.text)
+            guard !isAbandoned else { isSynthesizingSpeech = false; return }
+            if suppressNPCPlayback || playbackGeneration != generation {
+                messages.append(message)
+                isSynthesizingSpeech = false
+                return
+            }
             currentSpeechDuration = speech.durationSeconds
             // Prepare (pre-buffer) playback BEFORE appending the message --
             // appending is what starts WordRevealText's reveal timer, so
@@ -86,6 +108,7 @@ final class LiveLessonViewModel: ObservableObject {
             messages.append(message)
             if prepared { NPCVoiceService.shared.playPrepared() }
         } catch {
+            guard !isAbandoned else { isSynthesizingSpeech = false; return }
             // TTS is additive, not load-bearing -- a failure here should
             // never block the conversation. The message still appears;
             // WordRevealText just falls back to its WPM estimate.
@@ -197,15 +220,43 @@ final class LiveLessonViewModel: ObservableObject {
     /// above; this covers the case where playback had already started.
     @available(iOS 17.0, *)
     func stopSpeaking() {
+        playbackGeneration = UUID()
         NPCVoiceService.shared.stop()
     }
 
-    func sendUserResponse(_ text: String) async {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !isSendingTurn, !ended else { return }
-        guard Self.useMockDataForUITesting || scenario != nil else { return }
+    func setUserRecording(_ recording: Bool) {
+        suppressNPCPlayback = recording
+        if recording { stopSpeaking() }
+    }
 
-        messages.append(ConversationMessage(speaker: .user, text: trimmed))
+    func abandonVoiceSession() {
+        isAbandoned = true
+        stopSpeaking()
+        voiceFinishTask?.cancel()
+        voiceSession.cancel()
+    }
+
+    private func finishVoiceSession() {
+        guard voiceAnalysisError == nil else {
+            voiceSession.cancel()
+            return
+        }
+        voiceFinishTask = Task { [weak self] in
+            guard let self else { return }
+            do { self.voicePayload = try await self.voiceSession.finish().json }
+            catch is CancellationError { }
+            catch { self.voiceAnalysisError = error.localizedDescription }
+        }
+    }
+
+    @discardableResult
+    func sendUserResponse(_ text: String, voiceInput: VoiceTurnInput = .typed) async -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !isSendingTurn, !ended, !isAbandoned else { return false }
+        guard Self.useMockDataForUITesting || scenario != nil else { return false }
+
+        let userMessage = ConversationMessage(speaker: .user, text: trimmed)
+        messages.append(userMessage)
         let historyBeforeThisTurn = history
         history.append(HistoryTurn(role: "user", text: trimmed, character: nil))
         turnNumber += 1
@@ -213,12 +264,15 @@ final class LiveLessonViewModel: ObservableObject {
         errorMessage = nil
 
         if Self.useMockDataForUITesting {
+            do { try voiceSession.appendUser(id: userMessage.id.uuidString, text: trimmed, input: voiceInput) }
+            catch { voiceAnalysisError = error.localizedDescription }
             await mockSendUserResponse()
+            if ended { finishVoiceSession() }
             isSendingTurn = false
-            return
+            return true
         }
 
-        guard let scenario else { isSendingTurn = false; return }
+        guard let scenario else { isSendingTurn = false; return false }
 
         do {
             let result = try await ConversationEngineClient.fetchTurn(
@@ -230,6 +284,10 @@ final class LiveLessonViewModel: ObservableObject {
                 userResponse: trimmed,
                 conversationToken: conversationToken
             )
+            guard !isAbandoned else { isSendingTurn = false; return false }
+            // Accept the recording only after the text turn succeeds; failed sends retain their draft.
+            do { try voiceSession.appendUser(id: userMessage.id.uuidString, text: trimmed, input: voiceInput) }
+            catch { voiceAnalysisError = error.localizedDescription }
             if let token = result.conversationToken { conversationToken = token }
             if let energy = result.energy { LearnProgressStore.shared.applyServerEnergy(energy) }
             await presentNPCMessage(ConversationMessage(speaker: .npc, text: result.npc_reply, characterName: result.character))
@@ -239,6 +297,7 @@ final class LiveLessonViewModel: ObservableObject {
             empathyLevels.append(result.respect_and_empathy)
 
             if result.ended {
+                finishVoiceSession()
                 ended = true
                 resolution = result.resolution
                 await loadFeedback()
@@ -249,8 +308,11 @@ final class LiveLessonViewModel: ObservableObject {
             if messages.last?.speaker == .user { messages.removeLast() }
             history = historyBeforeThisTurn
             turnNumber -= 1
+            isSendingTurn = false
+            return false
         }
         isSendingTurn = false
+        return true
     }
 
     private func loadFeedback() async {

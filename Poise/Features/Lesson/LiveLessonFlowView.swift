@@ -79,6 +79,7 @@ struct LiveLessonFlowView: View {
             CharacterClipPreloader.preload([.idleNeutral, .talkNeutral])
             await viewModel.start()
         }
+        .onDisappear { viewModel.abandonVoiceSession() }
     }
 
     private var content: some View {
@@ -521,6 +522,7 @@ private struct LiveRoleplayView: View {
     @State private var response = ""
     @FocusState private var isWriting: Bool
     @StateObject private var speech = SpeechRecognitionService()
+    @State private var isSubmitting = false
 
     // Measured directly from an extracted frame of Idle_Neutral.mp4 (frame
     // 30, via ffmpeg) -- not a guess. Face occupies roughly 27%-51% of frame
@@ -662,14 +664,18 @@ private struct LiveRoleplayView: View {
                     .background(.white)
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .focused($isWriting)
-                    .disabled(viewModel.isSendingTurn)
+                    .disabled(viewModel.isSendingTurn || isSubmitting)
                     .accessibilityLabel("Typed response")
 
                 // Fills the text field as the user speaks, live -- never
                 // sends automatically. The user reviews/edits before tapping
                 // send, same non-destructive pattern as the browser mic
                 // button in conversation-engine.
-                Button(action: speech.toggleListening) {
+                Button {
+                    viewModel.setUserRecording(true)
+                    speech.toggleListening()
+                    viewModel.setUserRecording(speech.isCapturing)
+                } label: {
                     Image(systemName: speech.isListening ? "mic.fill" : "mic")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(speech.isListening ? .white : .white.opacity(0.85))
@@ -677,7 +683,7 @@ private struct LiveRoleplayView: View {
                         .background(speech.isListening ? Color.red.opacity(0.85) : .white.opacity(0.18))
                         .clipShape(Circle())
                 }
-                .disabled(viewModel.isSendingTurn)
+                .disabled(viewModel.isSendingTurn || isSubmitting || speech.isFinalizing)
                 .accessibilityLabel(speech.isListening ? "Stop dictating" : "Speak your response")
 
                 Button(action: sendResponse) {
@@ -690,10 +696,17 @@ private struct LiveRoleplayView: View {
             }
         }
         .onChange(of: speech.transcript) { _, newValue in
-            guard !newValue.isEmpty else { return }
+            guard !isSubmitting, !newValue.isEmpty else { return }
             response = newValue
         }
-        .onDisappear { speech.stopListening() }
+        .onChange(of: speech.isListening) { _, listening in
+            if listening { response = "" }
+        }
+        .onChange(of: speech.isCapturing) { _, recording in viewModel.setUserRecording(recording) }
+        .onDisappear {
+            speech.discardDraft()
+            viewModel.setUserRecording(false)
+        }
         .padding(.horizontal, 20)
         .padding(.top, 20)
         // Safe area (home-indicator clearance) is respected here, not
@@ -712,14 +725,22 @@ private struct LiveRoleplayView: View {
     }
 
     private var sendDisabled: Bool {
-        response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isSendingTurn
+        response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isSendingTurn || isSubmitting || speech.isStarting
     }
 
     private func sendResponse() {
         let trimmed = response
-        response = ""
+        isSubmitting = true
         isWriting = false
-        Task { await viewModel.sendUserResponse(trimmed) }
+        Task {
+            let input = await speech.finalizedInput()
+            viewModel.setUserRecording(false)
+            if await viewModel.sendUserResponse(trimmed, voiceInput: input) {
+                response = ""
+                speech.discardDraft()
+            }
+            isSubmitting = false
+        }
     }
 }
 
