@@ -91,6 +91,12 @@ with unavailable pitch can contribute transcript/pace/fillers but not pitch. Eve
 aggregate lists its own contributing IDs and seconds. Zero usable audio yields
 null metric values and null word/filler totals, not a fictional zero-filler score.
 
+Short turns can remain in `partialAnalysisTurnIds` while conversation coverage is
+`complete`: their combined words and durations may satisfy both aggregate pace
+gates even though each turn's pace is unavailable. This does not relax pitch
+eligibility. If individual turns lack usable pitch, pooling their durations does
+not create a pitch measurement or complete pitch coverage.
+
 ### Short example (abridged for readability)
 
 ```json
@@ -184,10 +190,16 @@ is a product decision; the factual coverage fields must always reach the model.
 ## Bounds, errors, and release verification
 
 Conversation bounds: 100 total messages, 20 user messages, 20,000 UTF-8 bytes per
-message, 200,000 dialogue bytes, 8 MiB of input reports, 300 seconds of successfully
-validated recordings, and 4 MiB of serialized output. Exceeding limits throws;
-there is no truncation. Failed recordings' durations cannot be inferred from a
-failure code and are not included in the 300-second analyzed-duration total.
+message, 200,000 dialogue bytes, 8 MiB of input reports, a nominal 300 seconds of
+successfully validated recordings with one 0.05-second conversation-wide boundary
+margin (accepted total <= 300.05 seconds), and 4 MiB of serialized output.
+The existing margin is retained to preserve which inputs are accepted; it is not
+50 ms per turn, and the reported duration is not rounded or truncated. Its original
+rationale is not recorded in the implementation or commit history. It should not
+be described as a necessary floating-point allowance: 50 ms is much larger than
+ordinary rounding error when summing at most 20 bounded Double durations.
+Exceeding limits throws. Failed recordings' durations cannot be inferred from a
+failure code and are not included in the analyzed-duration total.
 Choose explicit failure states for missing/interrupted captures, not zero-filled
 reports. Empty/NPC-only conversations have no_user_turns; typed-only/all-failed
 conversations have no_usable_audio. Neither produces a conversation score.
@@ -220,3 +232,36 @@ swift test` in this package. Native tests cover unequal durations, all states,
 partial metrics, empty/single/all-failed inputs, invalid reports and duplicate IDs,
 limits, clip-relative evidence, short-turn pooling, safe errors, and deadline
 behavior. The original per-clip tests and scoring tests remain regression coverage.
+
+## Known Limitations
+
+- **Cooperative deadlines:** the native analyzer requests cancellation, then waits
+  for its work to stop. Synchronous JavaScriptCore calculations and noncooperative
+  Apple operations can delay that return beyond the configured deadline. The
+  timeout is not a hard execution limit.
+- **Partial semantic validation:** payload validation checks structure, units,
+  numeric bounds, word counts/timings, and the weighted score equation. It does
+  not cross-check all reported measurements against each other or recompute each
+  category score from its measurement. Structurally valid, contradictory rates
+  and scores can still be accepted.
+- **Different Swift errors:** there is no universal error envelope. Pipeline
+  failures can throw `VoiceAnalysisFailure`; overlap, configuration, and deadlines
+  use `VoiceAnalysisError`; cancellation can throw `CancellationError`; payload
+  validation uses `VoicePayloadError`, and malformed JSON can throw Foundation
+  decoding errors. Invalid word timings can instead return a failed report.
+  Callers must handle these cases explicitly and inspect returned report status.
+- **First-use speech assets:** Apple may need to download locale assets before
+  on-device transcription can run. Cold-start download failure, stalled
+  installation, and recovery on unsupported devices/locales have not been tested.
+  An unsupported-locale error was observed under the Mac sandbox, but that does
+  not establish behavior on unsupported hardware or during first-use installation.
+- **Provisional scores and measurements:** pace, pitch, and filler targets are a
+  reasonable first-pass product policy, not a validated measure of communication
+  ability. They have not been evaluated against a real, labeled dataset spanning
+  speakers and devices. Apple transcription can still omit fillers, and its word
+  timestamps are estimates; energy-based pauses are not validated speech activity
+  detection. Detecting some fillers does not establish complete filler recall.
+- **Physical devices unverified:** verification includes native macOS tests,
+  local recordings, and iOS compilation. It does not establish physical-iPhone
+  memory use, interruptions, background behavior, or performance across supported
+  hardware and OS versions. No physical-device runtime validation is claimed.

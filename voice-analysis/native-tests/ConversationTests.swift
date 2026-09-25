@@ -116,6 +116,72 @@ final class ConversationTests: XCTestCase {
         XCTAssertTrue(metric(single, "speechOnlyRateWpm")["value"] is NSNull)
     }
 
+    func testPooledShortTurnsHaveCompleteAggregateCoverageWithoutChangingTurnStatus() throws {
+        let short = try clip(words: 10, fillers: 0, wordSeconds: 0.5, pitchSeconds: 3)
+        let body = try output((0..<2).map {
+            .init(id: "u\($0)", role: .user, text: "Reply", voice: .analyzed(short))
+        })
+        let coverage = try XCTUnwrap(body["coverage"] as? [String: Any])
+        XCTAssertEqual(coverage["status"] as? String, "complete")
+        XCTAssertEqual(coverage["allUserTurnsAnalyzed"] as? Bool, true)
+        XCTAssertEqual(coverage["allMetricsCoverAllUserTurns"] as? Bool, true)
+        XCTAssertEqual(coverage["partialAnalysisTurnIds"] as? [String], ["u0", "u1"])
+        let aggregates = try XCTUnwrap(body["aggregates"] as? [String: Any])
+        let metrics = try XCTUnwrap(aggregates["metrics"] as? [String: [String: Any]])
+        XCTAssertEqual(metrics.count, 7)
+        for (name, metric) in metrics {
+            XCTAssertEqual(metric["coversAllUserTurns"] as? Bool, true, name)
+            XCTAssertNotNil(metric["value"] as? Double, name)
+        }
+        let dialogue = try XCTUnwrap(body["dialogue"] as? [[String: Any]])
+        for turn in dialogue {
+            let analysis = try XCTUnwrap(turn["analysis"] as? [String: Any])
+            XCTAssertEqual(analysis["reportStatus"] as? String, "partial")
+            let turnMetrics = try XCTUnwrap(analysis["metrics"] as? [String: [String: Any]])
+            XCTAssertTrue(turnMetrics["speakingRateWpm"]?["value"] is NSNull)
+        }
+
+        let single = try output([.init(id: "u", role: .user, text: "Reply", voice: .analyzed(short))])
+        XCTAssertEqual((single["coverage"] as? [String: Any])?["status"] as? String, "partial")
+
+        // Pooling pace does not bypass per-turn pitch eligibility.
+        let missingPitch = try clip(words: 10, fillers: 0, wordSeconds: 0.5, pitch: nil, pitchSeconds: 2)
+        let incomplete = try output((0..<2).map {
+            .init(id: "u\($0)", role: .user, text: "Reply", voice: .analyzed(missingPitch))
+        })
+        XCTAssertEqual(metric(incomplete, "speechOnlyRateWpm")["coversAllUserTurns"] as? Bool, true)
+        XCTAssertTrue(metric(incomplete, "timeWeightedWithinTurnPitchRangeSemitones")["value"] is NSNull)
+        XCTAssertEqual((incomplete["coverage"] as? [String: Any])?["status"] as? String, "partial")
+        XCTAssertEqual((incomplete["coverage"] as? [String: Any])?["allMetricsCoverAllUserTurns"] as? Bool, false)
+    }
+
+    func testConversationDurationUsesOneFiftyMillisecondBoundaryMargin() throws {
+        let report = try clip()
+        func turns(totalSeconds: Double) throws -> [ConversationVoiceTurn] {
+            var source = try XCTUnwrap(JSONSerialization.jsonObject(with: report.json) as? [String: Any])
+            source["durationSeconds"] = totalSeconds / 4
+            let extended = VoiceAnalysisReport(json: try JSONSerialization.data(withJSONObject: source))
+            return (0..<4).map {
+                .init(id: "u\($0)", role: .user, text: "Reply", voice: .analyzed(extended))
+            }
+        }
+        for seconds in [300.0, 300.025, 300.05] {
+            let body = try output(turns(totalSeconds: seconds))
+            let aggregates = try XCTUnwrap(body["aggregates"] as? [String: Any])
+            let totals = try XCTUnwrap(aggregates["totals"] as? [String: Any])
+            XCTAssertEqual(try XCTUnwrap(totals["analyzedRecordingSeconds"] as? Double), seconds)
+            XCTAssertEqual((body["coverage"] as? [String: Any])?["analyzedTurnCount"] as? Int, 4)
+        }
+        for seconds in [Double(300.05).nextUp, 300.1, 300.2] {
+            XCTAssertThrowsError(try output(turns(totalSeconds: seconds))) { error in
+                guard case VoicePayloadError.invalid(let field) = error else {
+                    return XCTFail("Unexpected duration error: \(error)")
+                }
+                XCTAssertEqual(field, "conversation.duration_limit")
+            }
+        }
+    }
+
     func testMissingPitchOnlyExcludesThatTurnsPitchContribution() throws {
         let body = try output([
             .init(id: "u1", role: .user, text: "One", voice: .analyzed(try clip(pitch: 4))),

@@ -141,10 +141,12 @@ public struct ConversationVoicePayload: Sendable {
             dialogue.append(message)
             turnCoverage.append(coverage)
         }
+        // One existing 50 ms boundary margin for the conversation, not per turn.
         guard totals.recordedSeconds <= 300.05 else { throw VoicePayloadError.invalid("conversation.duration_limit") }
         let userCount = turnCoverage.count
         let audioComplete = userCount > 0 && analyzedIDs.count == userCount
-        let metricsComplete = audioComplete && partialIDs.isEmpty && totals.allMetricsCover(userCount)
+        // Short turns may satisfy aggregate pace gates together while remaining partial individually.
+        let metricsComplete = audioComplete && totals.allMetricsCover(userCount)
         let coverage: [String: Any] = [
             "status": userCount == 0 ? "no_user_turns" : analyzedIDs.isEmpty ? "no_usable_audio" : metricsComplete ? "complete" : "partial",
             "allUserTurnsAnalyzed": audioComplete, "allMetricsCoverAllUserTurns": metricsComplete,
