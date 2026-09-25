@@ -176,9 +176,38 @@ enum SkillLevel: Int, CaseIterable {
 }
 
 struct EngineCharacter: Codable, Hashable {
-    let name: String
-    let role: String
+    // `var`, not `let`: the custom-scenario builder lets the user hand-edit
+    // a generated character's name/role before starting practice (see
+    // CustomScenarioFlowView). Confirmed safe -- this type is never used as
+    // a Set/Dictionary key anywhere.
+    var name: String
+    var role: String
     let relationship: String?
+    // "male" or "female" -- picks which of the app's three bundled
+    // character models this NPC renders as (see CharacterAppearance).
+    // Optional, and tolerated as missing on decode (a plain Optional
+    // already decodes a missing key as nil), because the deployed
+    // conversation-engine server is a separate process from the app and
+    // isn't guaranteed to have been redeployed with this field the moment
+    // a new client build ships.
+    let gender: String?
+
+    // The exact `role` phrases the engine's lesson definitions use (see
+    // lessons.js/PoiseLessonContent.swift), translated to plain language for
+    // the chip. `role` itself is left alone -- on the live path it's also
+    // fed straight into the model's system prompt in third person ("you are
+    // roleplaying as Dani, Direct report"), so rewriting it to a "Your ..."
+    // phrasing there would read backwards to the model. Only the on-screen
+    // label changes. "report" is org-chart jargon ("direct report" = an
+    // employee who reports to you) that reads as unclear outside that
+    // context; "peer manager" has the same problem.
+    private static let plainLanguageRoles: [String: String] = [
+        "New report": "Your new employee",
+        "Direct report": "Your employee",
+        "Two reports": "Your employees",
+        "Peer manager": "Your co-worker",
+        "Leadership": "Senior leadership",
+    ]
 
     // `role` is written for the language model's benefit -- "Peer, coworker on
     // an adjacent team" -- which is far too long for the name chip on the
@@ -189,8 +218,10 @@ struct EngineCharacter: Codable, Hashable {
     // the app has never seen, not just the five in the mock library.
     var shortRole: String {
         let head = role.split(separator: ",").first.map(String.init) ?? role
-        let cleaned = head
-            .trimmingCharacters(in: .whitespaces)
+        let trimmed = head.trimmingCharacters(in: .whitespaces)
+        if let plain = Self.plainLanguageRoles[trimmed] { return plain }
+
+        let cleaned = trimmed
             .replacingOccurrences(of: "The user's own ", with: "Your ")
             .replacingOccurrences(of: "The user's ", with: "Your ")
         // Backstop for anything the engine sends without a comma: keep it to

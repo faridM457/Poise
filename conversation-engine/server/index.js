@@ -1,9 +1,10 @@
 import "dotenv/config";
 import express from "express";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { lessons, getLessonById } from "./lessons.js";
-import { generateScenario, generateOpeningLine, runTurn, generateFeedback } from "./engine.js";
+import { generateScenario, generateOpeningLine, runTurn, generateFeedback, generateCustomLesson } from "./engine.js";
 import { transcribeWithWhisper, STT_MODES } from "./stt.js";
 import { requireAuth, requireConversation, issueToken, verifyToken } from "./auth.js";
 import { rateLimit } from "./ratelimit.js";
@@ -28,6 +29,50 @@ function requireConversationReason(req, lessonId) {
 function lessonSummary(lesson) {
   const { id, unit, title, isCheckpoint, character } = lesson;
   return { id, unit, title, isCheckpoint, character };
+}
+
+// Loose but real bounds on a client-supplied custom lesson (see
+// resolveLesson below) -- not a curriculum shape to enforce meaning, just
+// enough to stop a malformed or hostile payload from riding along on every
+// turn of a conversation it can otherwise run for as long as MAX_USER_TURNS
+// allows, at this user's own energy cost.
+const CUSTOM_LESSON_FIELD_LIMIT = 2000;
+const CUSTOM_LESSON_MAX_CRITERIA = 6;
+
+function isValidCustomLesson(lesson) {
+  if (!lesson || typeof lesson !== "object") return false;
+  if (typeof lesson.id !== "string" || !lesson.id) return false;
+  if (typeof lesson.title !== "string" || lesson.title.length > CUSTOM_LESSON_FIELD_LIMIT) return false;
+  if (typeof lesson.personaNotes !== "string" || lesson.personaNotes.length > CUSTOM_LESSON_FIELD_LIMIT) return false;
+  if (
+    !Array.isArray(lesson.criteria) ||
+    lesson.criteria.length === 0 ||
+    lesson.criteria.length > CUSTOM_LESSON_MAX_CRITERIA ||
+    !lesson.criteria.every((c) => typeof c === "string" && c.length > 0 && c.length <= CUSTOM_LESSON_FIELD_LIMIT)
+  ) {
+    return false;
+  }
+  const character = lesson.character;
+  if (!character || typeof character !== "object") return false;
+  if (typeof character.name !== "string" || !character.name || character.name.length > 200) return false;
+  if (typeof character.role !== "string" || !character.role || character.role.length > CUSTOM_LESSON_FIELD_LIMIT) return false;
+  if (
+    character.relationship != null &&
+    (typeof character.relationship !== "string" || character.relationship.length > CUSTOM_LESSON_FIELD_LIMIT)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+// Built-in lessons are looked up by id, same as always. A custom scenario
+// (see /api/custom-scenario) isn't in that static list, so the client
+// carries the full lesson object it was handed at generation time on every
+// later call instead -- the server stays stateless either way, it just
+// doesn't have anywhere else to keep a one-off lesson between requests.
+function resolveLesson(req) {
+  if (req.body.lessonId) return getLessonById(req.body.lessonId);
+  return isValidCustomLesson(req.body.lesson) ? req.body.lesson : null;
 }
 
 app.get("/api/lessons", (req, res) => {
@@ -92,10 +137,51 @@ app.post("/api/scenario", rateLimit("scenario"), async (req, res) => {
   }
 });
 
+const CUSTOM_SCENARIO_PROMPT_LIMIT = 500;
+
+// Builds a one-off lesson (title, character, goals, persona notes) and its
+// first scenario from the user's own free-text description -- the entry
+// point for Poise Pro's custom-scenario builder. Pro-gated server-side, not
+// just in the app: the client is never trusted on entitlement, same
+// reasoning as spend()'s verifyPro check below. Unlike /api/scenario, the
+// resulting lesson isn't in the static list, so it's returned in full (see
+// resolveLesson) for the client to carry through opening/turn/feedback.
+app.post("/api/custom-scenario", rateLimit("scenario"), async (req, res) => {
+  try {
+    const prompt = typeof req.body.prompt === "string" ? req.body.prompt.trim() : "";
+    if (!prompt) return res.status(400).json({ error: "Missing prompt" });
+    if (prompt.length > CUSTOM_SCENARIO_PROMPT_LIMIT) {
+      return res.status(400).json({ error: `Prompt must be ${CUSTOM_SCENARIO_PROMPT_LIMIT} characters or fewer.` });
+    }
+    if (!(await verifyPro(req.poiseUser))) {
+      return res.status(403).json({ error: "Custom scenarios are a Poise Pro feature." });
+    }
+
+    const generated = await generateCustomLesson(prompt);
+    const lesson = {
+      id: `custom-${randomUUID()}`,
+      unit: "Custom",
+      title: generated.title,
+      isCheckpoint: false,
+      character: generated.character,
+      criteria: generated.criteria,
+      personaNotes: generated.personaNotes,
+    };
+    const scenario = { briefing: generated.briefing, criteria: generated.criteria };
+    res.json({
+      lesson: { ...lessonSummary(lesson), personaNotes: lesson.personaNotes, criteria: lesson.criteria },
+      scenario,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/api/opening", rateLimit("opening"), async (req, res) => {
   try {
-    const lesson = getLessonById(req.body.lessonId);
-    if (!lesson) return res.status(404).json({ error: "Unknown lessonId" });
+    const lesson = resolveLesson(req);
+    if (!lesson) return res.status(404).json({ error: "Unknown or invalid lesson" });
     const { scenario } = req.body;
 
     const openingLine = await generateOpeningLine(lesson, scenario);
@@ -114,8 +200,8 @@ app.post("/api/opening", rateLimit("opening"), async (req, res) => {
 // calls here against one scenario/opening pair, not one.
 app.post("/api/turn", rateLimit("turn", { limit: 50 }), async (req, res) => {
   try {
-    const lesson = getLessonById(req.body.lessonId);
-    if (!lesson) return res.status(404).json({ error: "Unknown lessonId" });
+    const lesson = resolveLesson(req);
+    if (!lesson) return res.status(404).json({ error: "Unknown or invalid lesson" });
     const { scenario, history, metCriteria, turnNumber, userResponse } = req.body;
 
     // Energy is charged when the conversation starts -- turn 1 -- because
@@ -165,8 +251,8 @@ app.post("/api/turn", rateLimit("turn", { limit: 50 }), async (req, res) => {
 // of limit, with a bit of headroom over their default for a redone lesson.
 app.post("/api/feedback", rateLimit("feedback", { limit: 15 }), requireConversation, async (req, res) => {
   try {
-    const lesson = getLessonById(req.body.lessonId);
-    if (!lesson) return res.status(404).json({ error: "Unknown lessonId" });
+    const lesson = resolveLesson(req);
+    if (!lesson) return res.status(404).json({ error: "Unknown or invalid lesson" });
     const { scenario, history, metCriteria, deductionCount, resolution, empathyLevels } = req.body;
 
     const feedback = await generateFeedback({

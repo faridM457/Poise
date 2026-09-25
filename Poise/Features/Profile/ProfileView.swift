@@ -18,6 +18,12 @@ struct ProfileView: View {
     @State private var showPaywall = false
     @State private var showResetConfirm = false
 
+    #if DEBUG
+    // Compiled out of Release, same as the Testing section below that's
+    // this closure's only caller.
+    var onDebugReplayFirstLaunch: () -> Void = {}
+    #endif
+
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 26) {
@@ -53,6 +59,7 @@ struct ProfileView: View {
                         EnergyCheatCard(store: store)
                         ClockCheatCard(store: store)
                         SkipRoleplayCard(store: store)
+                        ReplayFirstLaunchCard(action: onDebugReplayFirstLaunch)
                     }
                 }
                 #endif
@@ -609,6 +616,50 @@ private struct SkipRoleplayCard: View {
     }
 }
 
+private struct ReplayFirstLaunchCard: View {
+    let action: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            PoiseSurfaceCard {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(spacing: 10) {
+                        PoiseIconBadge(icon: "arrow.counterclockwise", color: .poisePurple)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("First-launch flow")
+                                .font(PoiseType.headline())
+                                .foregroundStyle(Color.poiseNavy)
+                            Text("Onboarding, then the sign-in prompt")
+                                .font(PoiseType.subhead())
+                                .foregroundStyle(Color.poiseMuted)
+                        }
+                        Spacer(minLength: 8)
+                    }
+
+                    Button(action: action) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 12, weight: .bold))
+                            Text("Replay")
+                                .font(PoiseType.subhead(.bold))
+                        }
+                        .foregroundStyle(Color.poiseBlueDark)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
+                        .background(Color.poiseSoftBlue)
+                        .clipShape(Capsule())
+                        .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Replay the first-launch flow")
+                }
+            }
+
+            FootNote("Resets the one-time onboarding and sign-in-prompt flags and shows both again, onboarding first. Also signs you out if you were signed in, since the sign-in prompt only shows to a signed-out account -- your progress itself is untouched.")
+        }
+    }
+}
+
 private struct CheatButton: View {
     let title: String
     let icon: String
@@ -779,7 +830,7 @@ fileprivate func trialPeriodText(for package: Package, eligible: Bool) -> String
     return "\(period.value) \(unit)\(period.value == 1 ? "" : "s")"
 }
 
-private struct PaywallSheet: View {
+struct PaywallSheet: View {
     @ObservedObject var subscriptions: SubscriptionStore
     @Environment(\.dismiss) private var dismiss
 

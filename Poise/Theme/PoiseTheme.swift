@@ -77,6 +77,20 @@ struct PoiseType {
     static let eyebrowTracking: CGFloat = 1.1
 }
 
+// Shared spacing constants, same reasoning as PoiseType's one type scale --
+// a value used in more than one place belongs here, not repeated at each
+// call site with its own slightly different number.
+struct PoiseLayout {
+    // Horizontal margin for screens that are mostly prose to read (onboarding,
+    // a lesson's briefing/guide) rather than a grid of cards. Wider than the
+    // app's general 20pt content margin (LearnView, ProfileView,
+    // ProgressDashboardView) -- at 20-24pt, paragraph text ran nearly edge to
+    // edge on larger phones (confirmed on iPhone 17 Pro Max's 6.9" width),
+    // which reads as cramped even though the same margin looks fine around a
+    // card or a grid.
+    static let readingMargin: CGFloat = 32
+}
+
 struct PoiseCardBackground: ViewModifier {
     var fill: Color = .white
     var stroke: Color = .poiseBorder

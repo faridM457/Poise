@@ -49,6 +49,16 @@ final class NPCVoiceService: NSObject {
     func prepare(_ audioData: Data) -> Bool {
         do {
             let session = AVAudioSession.sharedInstance()
+            // Deactivate before changing category rather than switching an
+            // already-active session -- SpeechRecognitionService leaves the
+            // session active in .playAndRecord after the user's turn (its own
+            // stopListening() deactivates it, but the two services alternate
+            // turn by turn, so this side must not assume it's inheriting an
+            // idle session). Apple's own guidance is deactivate, change
+            // category, then reactivate; changing category on a session
+            // that's still active for a different category is exactly the
+            // kind of thing that works once and then silently misbehaves.
+            try? session.setActive(false, options: .notifyOthersOnDeactivation)
             try session.setCategory(.playback, mode: .default, options: [.duckOthers])
             try session.setActive(true)
 
@@ -56,6 +66,12 @@ final class NPCVoiceService: NSObject {
             let delegate = AudioPlayerCompletionDelegate { [weak self] in
                 self?.player = nil
                 self?.playerDelegate = nil
+                // Release the session on completion, not just the player --
+                // otherwise the session sits active in .playback until
+                // something else forces a change, which is the same
+                // conflict this fix is closing, just shifted from "stop()
+                // never deactivates" to "natural completion never does".
+                try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
             }
             newPlayer.delegate = delegate
             newPlayer.prepareToPlay()
@@ -80,6 +96,11 @@ final class NPCVoiceService: NSObject {
         player?.stop()
         player = nil
         playerDelegate = nil
+        // See prepare()'s comment: natural completion releases the session
+        // via the player delegate, but an interrupted stop (user leaves
+        // mid-line) skips that callback entirely, so it has to happen here
+        // too or the session is left active in .playback indefinitely.
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
     private func loadedEngine() async throws -> PocketTTSSwift {

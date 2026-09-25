@@ -66,7 +66,7 @@ enum PoiseLessonLibrary {
             title: "Your First One-on-One",
             icon: "person.2.fill",
             isCheckpoint: false,
-            character: EngineCharacter(name: "Dani", role: "New report", relationship: "Joined your team last week; was a peer until the reorg"),
+            character: EngineCharacter(name: "Dani", role: "New report", relationship: "Joined your team last week; was a peer until the reorg", gender: "female"),
             briefing: "Dani starts reporting to you today. Until the reorg two weeks ago you sat at the same level, and neither of you has acknowledged that out loud yet. This is your first one-on-one and there is no problem to solve -- only the working relationship to set up.",
             criteria: [
                 "State your role and how you'll support them",
@@ -88,7 +88,7 @@ enum PoiseLessonLibrary {
             shortTitle: "Clarifying Your Own Mixed Signals",
             icon: "person.2.fill",
             isCheckpoint: false,
-            character: EngineCharacter(name: "Priya", role: "Direct report", relationship: "5 months on the team, reports to you"),
+            character: EngineCharacter(name: "Priya", role: "Direct report", relationship: "5 months on the team, reports to you", gender: "female"),
             briefing: "Two weeks ago you told Priya the migration was the priority. Last Thursday, in a hurry, you asked her to take the partner integration as well and implied it was urgent. She has been splitting her time and finishing neither. The confusion is yours, not hers.",
             criteria: [
                 "Acknowledge the conflicting signals you gave",
@@ -109,7 +109,7 @@ enum PoiseLessonLibrary {
             title: "Aligning on Working Style",
             icon: "person.2.fill",
             isCheckpoint: false,
-            character: EngineCharacter(name: "Theo", role: "Direct report", relationship: "3 months on the team, senior hire, reports to you"),
+            character: EngineCharacter(name: "Theo", role: "Direct report", relationship: "3 months on the team, senior hire, reports to you", gender: "male"),
             briefing: "Theo wants to ship without review and has said your check-ins feel like supervision. You are not comfortable handing over that much yet -- he is three months in and two recent calls went badly. You need a workable middle, not a winner.",
             criteria: [
                 "Name the mismatch directly",
@@ -131,7 +131,7 @@ enum PoiseLessonLibrary {
             shortTitle: "Repairing Trust After Your Misstep",
             icon: "person.2.fill",
             isCheckpoint: false,
-            character: EngineCharacter(name: "Nadia", role: "Direct report", relationship: "1 year on the team, reports to you"),
+            character: EngineCharacter(name: "Nadia", role: "Direct report", relationship: "1 year on the team, reports to you", gender: "female"),
             briefing: "In Monday's review you rewrote Nadia's recommendation on the spot, in front of the wider group, without speaking to her first. She has been polite and distant since. The mistake here is specifically yours.",
             criteria: [
                 "Name your specific action and take responsibility for it",
@@ -153,7 +153,7 @@ enum PoiseLessonLibrary {
             shortTitle: "The Reset Conversation",
             icon: "flag.checkered",
             isCheckpoint: true,
-            character: EngineCharacter(name: "Owen", role: "Direct report", relationship: "4 months on the team, reports to you"),
+            character: EngineCharacter(name: "Owen", role: "Direct report", relationship: "4 months on the team, reports to you", gender: "male"),
             briefing: "Owen has asked for time. He is unclear on what you want prioritized -- reasonably, because you have changed the answer twice -- and he is also pushing to make those calls himself without checking in. Both are live in the same conversation.",
             criteria: [
                 "Own the ambiguity you created and name a single priority",
@@ -176,7 +176,7 @@ enum PoiseLessonLibrary {
             title: "Your First Critical Feedback",
             icon: "text.bubble.fill",
             isCheckpoint: false,
-            character: EngineCharacter(name: "Sam", role: "Direct report", relationship: "6 months on the team, reports to you"),
+            character: EngineCharacter(name: "Sam", role: "Direct report", relationship: "6 months on the team, reports to you", gender: "male"),
             briefing: "In Tuesday's planning session Sam talked over two teammates, including one who had been trying to raise a risk. Sam almost certainly doesn't know they did it. This is a one-time observation, not a pattern -- yet.",
             criteria: [
                 "Name the specific behavior",
@@ -198,7 +198,7 @@ enum PoiseLessonLibrary {
             shortTitle: "Feedback to a Senior Report",
             icon: "text.bubble.fill",
             isCheckpoint: false,
-            character: EngineCharacter(name: "Margaret", role: "Direct report", relationship: "12 years in the field, 2 years on the team, reports to you"),
+            character: EngineCharacter(name: "Margaret", role: "Direct report", relationship: "12 years in the field, 2 years on the team, reports to you", gender: "female"),
             briefing: "Margaret has been doing this twice as long as you have. She has been dismissing junior engineers' questions in review -- briskly, not cruelly -- and two of them have stopped asking. When challenged she tends to reach for her experience.",
             criteria: [
                 "Describe the observed behavior and impact without invoking hierarchy",
@@ -219,7 +219,7 @@ enum PoiseLessonLibrary {
             title: "Addressing a Repeated Miss",
             icon: "text.bubble.fill",
             isCheckpoint: false,
-            character: EngineCharacter(name: "Jonah", role: "Direct report", relationship: "8 months on the team, reports to you"),
+            character: EngineCharacter(name: "Jonah", role: "Direct report", relationship: "8 months on the team, reports to you", gender: "male"),
             briefing: "Jonah has missed the same weekly handoff twice now. Both times there was a plausible reason and both times you heard it after the fact. He is capable, which is exactly why this has become a pattern rather than an accident.",
             criteria: [
                 "State the repeated pattern using observable facts",
@@ -240,7 +240,7 @@ enum PoiseLessonLibrary {
             title: "Feedback That Gets Pushed Back On",
             icon: "text.bubble.fill",
             isCheckpoint: false,
-            character: EngineCharacter(name: "Alex", role: "Direct report", relationship: "1 year on the team, reports to you"),
+            character: EngineCharacter(name: "Alex", role: "Direct report", relationship: "1 year on the team, reports to you", gender: "female"),
             briefing: "You are raising that Alex's status updates have been leaving out known risks. Alex disputes this -- not defensively at first, but firmly, and with specifics. Some of what he says is fair. The underlying expectation still stands.",
             criteria: [
                 "Ask what specifically they dispute: the facts, impact, or expectation",
@@ -262,7 +262,7 @@ enum PoiseLessonLibrary {
             shortTitle: "Feedback Under Fire",
             icon: "flag.checkered",
             isCheckpoint: true,
-            character: EngineCharacter(name: "Reese", role: "Direct report", relationship: "1 year on the team, reports to you"),
+            character: EngineCharacter(name: "Reese", role: "Direct report", relationship: "1 year on the team, reports to you", gender: "female"),
             briefing: "Reese has missed the same client deadline three times this quarter. You have the dates. When you raise it, Reese disputes that it is a pattern at all and has an account of each one that puts the cause elsewhere.",
             criteria: [
                 "Hold the documented pattern rather than arguing each instance",
@@ -285,7 +285,7 @@ enum PoiseLessonLibrary {
             title: "Turning Down a Report's Request",
             icon: "hand.raised.fill",
             isCheckpoint: false,
-            character: EngineCharacter(name: "Cass", role: "Direct report", relationship: "2 years on the team, reports to you"),
+            character: EngineCharacter(name: "Cass", role: "Direct report", relationship: "2 years on the team, reports to you", gender: "female"),
             briefing: "Cass wants to lead the platform rebuild. You are giving it to someone else, and there is genuinely no equivalent project to offer instead -- not this quarter, possibly not this year. There is no consolation prize to reach for.",
             criteria: [
                 "Give the decision clearly",
@@ -306,7 +306,7 @@ enum PoiseLessonLibrary {
             title: "Protecting Your Team's Time",
             icon: "hand.raised.fill",
             isCheckpoint: false,
-            character: EngineCharacter(name: "Martin", role: "Peer manager", relationship: "Runs an adjacent team; does not report to you"),
+            character: EngineCharacter(name: "Martin", role: "Peer manager", relationship: "Runs an adjacent team; does not report to you", gender: "male"),
             briefing: "Martin's team has been going directly to two of your engineers for 'quick favours' -- four times in three weeks, none of it tracked, all of it landing mid-sprint. Martin is not being malicious; he has simply found a shortcut that works for him.",
             criteria: [
                 "Name the pattern you're seeing",
@@ -327,7 +327,7 @@ enum PoiseLessonLibrary {
             title: "Saying No to Your Boss's Deadline",
             icon: "hand.raised.fill",
             isCheckpoint: false,
-            character: EngineCharacter(name: "Diane", role: "Your manager", relationship: "Your direct manager; the deadline may not be hers to move"),
+            character: EngineCharacter(name: "Diane", role: "Your manager", relationship: "Your direct manager; the deadline may not be hers to move", gender: "female"),
             briefing: "Diane has committed your team to a date you cannot hit at the current scope. The date may be genuinely fixed. What is negotiable is what ships by it -- and that trade has to be made explicitly, by her, not quietly absorbed by your team.",
             criteria: [
                 "State the constraint factually",
@@ -349,7 +349,7 @@ enum PoiseLessonLibrary {
             shortTitle: "A Boundary With a Former Peer",
             icon: "hand.raised.fill",
             isCheckpoint: false,
-            character: EngineCharacter(name: "Joel", role: "Direct report", relationship: "Was your peer for 3 years; has reported to you for 2 months"),
+            character: EngineCharacter(name: "Joel", role: "Direct report", relationship: "Was your peer for 3 years; has reported to you for 2 months", gender: "male"),
             briefing: "Joel keeps treating you as his back channel -- asking what was said in leadership, expecting a heads-up on decisions before the team hears them, and floating exceptions to process 'since it's us'. You were genuinely close. That is exactly what makes this hard.",
             criteria: [
                 "Acknowledge that the relationship has changed",
@@ -371,7 +371,7 @@ enum PoiseLessonLibrary {
             shortTitle: "Holding the Line",
             icon: "flag.checkered",
             isCheckpoint: true,
-            character: EngineCharacter(name: "Devon", role: "Direct report", relationship: "Was your peer for 4 years; has reported to you for 3 months"),
+            character: EngineCharacter(name: "Devon", role: "Direct report", relationship: "Was your peer for 4 years; has reported to you for 3 months", gender: "male"),
             briefing: "Devon -- a former peer, now your report -- wants the lead role on the new initiative. You cannot give it to him and there is no equivalent substitute. When you say no, he reaches for the history between you.",
             criteria: [
                 "Deliver a final no without inventing a consolation prize",
@@ -394,7 +394,7 @@ enum PoiseLessonLibrary {
             title: "Asking for Resources or Headcount",
             icon: "megaphone.fill",
             isCheckpoint: false,
-            character: EngineCharacter(name: "Diane", role: "Your manager", relationship: "Your direct manager; controls the budget"),
+            character: EngineCharacter(name: "Diane", role: "Your manager", relationship: "Your direct manager; controls the budget", gender: "female"),
             briefing: "You need one more engineer. Your team has absorbed two extra services this year with no additions, and the on-call rotation is down to three people. Diane is not hostile, but the budget round closed last month.",
             criteria: [
                 "State the specific ask and the need behind it",
@@ -416,7 +416,7 @@ enum PoiseLessonLibrary {
             shortTitle: "Disagreeing With a Peer, Publicly",
             icon: "megaphone.fill",
             isCheckpoint: false,
-            character: EngineCharacter(name: "Karim", role: "Peer manager", relationship: "Runs an adjacent team; presenting to a room you're both in"),
+            character: EngineCharacter(name: "Karim", role: "Peer manager", relationship: "Runs an adjacent team; presenting to a room you're both in", gender: "male"),
             briefing: "Karim is walking the room through a migration plan that will break your team's release process. Six other people are present, including his skip-level. Saying nothing means it gets approved; saying it badly turns a technical disagreement into a standoff.",
             criteria: [
                 "Name the specific disagreement, not the person",
@@ -438,7 +438,7 @@ enum PoiseLessonLibrary {
             shortTitle: "Defending Your Team's Work",
             icon: "megaphone.fill",
             isCheckpoint: false,
-            character: EngineCharacter(name: "Ellis", role: "Leadership", relationship: "Senior leader in a review with others present"),
+            character: EngineCharacter(name: "Ellis", role: "Leadership", relationship: "Senior leader in a review with others present", gender: "male"),
             briefing: "Leadership is questioning whether your team's project is worth continuing. Adoption is below the original target -- that part is true. The rest of the picture is not in the room, and there is a real shortfall you will have to own without handing your team to the wolves.",
             criteria: [
                 "State the business outcome and your team's contribution",
@@ -460,7 +460,7 @@ enum PoiseLessonLibrary {
             shortTitle: "Owning a Team Miss",
             icon: "megaphone.fill",
             isCheckpoint: false,
-            character: EngineCharacter(name: "Ellis", role: "Leadership", relationship: "Senior leader; frustrated about a missed commitment"),
+            character: EngineCharacter(name: "Ellis", role: "Leadership", relationship: "Senior leader; frustrated about a missed commitment", gender: "male"),
             briefing: "Your team missed a commitment that leadership had already promised externally. One person on your team made the call that caused it. Leadership wants to know what happened, and there is a real temptation to be specific about who.",
             criteria: [
                 "State what happened and take ownership without scapegoating the report",
@@ -482,7 +482,7 @@ enum PoiseLessonLibrary {
             shortTitle: "Advocating Under Scrutiny",
             icon: "flag.checkered",
             isCheckpoint: true,
-            character: EngineCharacter(name: "Karim", role: "Peer manager", relationship: "Adjacent team lead, challenging you with leadership in the room"),
+            character: EngineCharacter(name: "Karim", role: "Peer manager", relationship: "Adjacent team lead, challenging you with leadership in the room", gender: "male"),
             briefing: "In a review with leadership present, Karim argues your team's approach is the reason the numbers are soft and proposes folding the work into his team. Leadership is listening and has its own questions about the results.",
             criteria: [
                 "Disagree with the peer's claim without making it personal",
@@ -506,7 +506,7 @@ enum PoiseLessonLibrary {
             shortTitle: "Delivering a Job Offer",
             icon: "exclamationmark.triangle.fill",
             isCheckpoint: false,
-            character: EngineCharacter(name: "Imani", role: "Candidate", relationship: "Final-round candidate weighing another offer"),
+            character: EngineCharacter(name: "Imani", role: "Candidate", relationship: "Final-round candidate weighing another offer", gender: "female"),
             briefing: "You are extending an offer to Imani, who has a competing one. Base salary is fixed -- you have no room there. Start date and title are genuinely flexible. Over-promising to close her would be worse than losing her.",
             criteria: [
                 "Present the offer clearly and state what's flexible vs. fixed",
@@ -528,7 +528,7 @@ enum PoiseLessonLibrary {
             shortTitle: "Rejecting a Final Candidate",
             icon: "exclamationmark.triangle.fill",
             isCheckpoint: false,
-            character: EngineCharacter(name: "Peter", role: "Candidate", relationship: "Final-round candidate; genuinely close"),
+            character: EngineCharacter(name: "Peter", role: "Candidate", relationship: "Final-round candidate; genuinely close", gender: "male"),
             briefing: "Peter made it to the final two and was a real contender. You are calling to tell him he didn't get it. There is no ongoing relationship to manage afterwards -- which makes honesty easier and vagueness more tempting.",
             criteria: [
                 "State the decision clearly and promptly",
@@ -549,7 +549,7 @@ enum PoiseLessonLibrary {
             title: "A Formal Performance Conversation",
             icon: "exclamationmark.triangle.fill",
             isCheckpoint: false,
-            character: EngineCharacter(name: "Jonah", role: "Direct report", relationship: "Documented pattern; informal feedback has already been tried"),
+            character: EngineCharacter(name: "Jonah", role: "Direct report", relationship: "Documented pattern; informal feedback has already been tried", gender: "male"),
             briefing: "Informal feedback hasn't worked. This is the formal conversation: a documented pattern, a stated consequence, and a timeline. Jonah knows roughly what is coming and is somewhere between defensive and resigned.",
             criteria: [
                 "State the pattern and its documented history",
@@ -571,7 +571,7 @@ enum PoiseLessonLibrary {
             shortTitle: "Mediating Between Two Reports",
             icon: "exclamationmark.triangle.fill",
             isCheckpoint: false,
-            character: EngineCharacter(name: "Ines & Marco", role: "Two reports", relationship: "Both report to you; both in the room and barely speaking"),
+            character: EngineCharacter(name: "Ines & Marco", role: "Two reports", relationship: "Both report to you; both in the room and barely speaking", gender: "female"),
             briefing: "Ines and Marco have stopped working together in any real sense and it is now affecting the team. Both are in the room. Your job is not to rule on who was right -- it is to run a conversation neither of them can run alone.",
             criteria: [
                 "Set ground rules for the conversation",
@@ -592,7 +592,7 @@ enum PoiseLessonLibrary {
             title: "Letting Someone Go",
             icon: "exclamationmark.triangle.fill",
             isCheckpoint: false,
-            character: EngineCharacter(name: "Cass", role: "Direct report", relationship: "2 years on the team; this is their last conversation with you"),
+            character: EngineCharacter(name: "Cass", role: "Direct report", relationship: "2 years on the team; this is their last conversation with you", gender: "female"),
             briefing: "The decision is made and is not reversible. Cass is being let go today. Nothing you say will change the outcome, and everything you say should reflect that -- this is the last conversation you will have as their manager.",
             criteria: [
                 "State the decision plainly, early in the conversation",
@@ -614,7 +614,7 @@ enum PoiseLessonLibrary {
             shortTitle: "The Full Arc",
             icon: "flag.checkered",
             isCheckpoint: true,
-            character: EngineCharacter(name: "Reese", role: "Direct report", relationship: "At the end of a documented performance process"),
+            character: EngineCharacter(name: "Reese", role: "Direct report", relationship: "At the end of a documented performance process", gender: "female"),
             briefing: "This is the performance conversation at the end of the process. Depending on how it goes, it may become the termination conversation in the same sitting. Both outcomes are genuinely on the table when you walk in.",
             criteria: [
                 "State the documented pattern and the consequence plainly",

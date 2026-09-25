@@ -2,7 +2,15 @@ import SwiftUI
 
 struct PoiseRootView: View {
     @State private var selectedTab: AppTab = .learn
+    @State private var showOnboarding = false
     @State private var showSignInPrompt = false
+    // Set only by the debug "replay first launch" button (ProfileView's
+    // Testing section) -- distinguishes that path from a real first launch
+    // so onboarding's onDismiss knows to chain straight into the sign-in
+    // prompt afterward, rather than leaving it for a later cold launch the
+    // way a genuine first run does. Harmless left in Release: nothing ever
+    // sets it there, since the button that does is #if DEBUG-gated.
+    @State private var isDebugReplayingFirstLaunch = false
     @Environment(\.scenePhase) private var scenePhase
     // Watched here, not inside any one tab, because a badge earned by
     // finishing a lesson is announced only after LiveLessonFlowView has
@@ -25,7 +33,11 @@ struct PoiseRootView: View {
             case .progress:
                 ProgressDashboardView()
             case .profile:
+                #if DEBUG
+                ProfileView(onDebugReplayFirstLaunch: replayFirstLaunch)
+                #else
                 ProfileView()
+                #endif
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -39,7 +51,14 @@ struct PoiseRootView: View {
             // Confirms (or corrects) the cached Pro flag the app launched
             // with, so the energy cap and regen interval settle to the truth.
             await SubscriptionStore.shared.refreshAtLaunch()
-            if AccountStore.shared.shouldShowSignInPrompt {
+            // Onboarding takes priority on a truly fresh install. If it
+            // needs to show this launch, the sign-in prompt is left alone --
+            // its own shouldShowSignInPrompt check naturally fires on a
+            // later become-active if it's still relevant, rather than both
+            // competing for the same launch.
+            if OnboardingStore.shouldShow {
+                showOnboarding = true
+            } else if AccountStore.shared.shouldShowSignInPrompt {
                 showSignInPrompt = true
             }
         }
@@ -72,6 +91,25 @@ struct PoiseRootView: View {
             } else if newPhase == .background {
                 scheduleBackgroundReminders()
             }
+        }
+        // Once, ever, per install -- see OnboardingStore.shouldShow for why
+        // that's a local flag rather than a synced one. fullScreenCover, not
+        // sheet: this is a proper first-run experience, not a dismissible
+        // card, and it only ever closes one way (finishing the flow), so
+        // onDismiss is the one place that needs to mark it shown.
+        .fullScreenCover(isPresented: $showOnboarding, onDismiss: {
+            OnboardingStore.markShown()
+            // Only the debug replay chains straight into the sign-in prompt --
+            // see isDebugReplayingFirstLaunch's own comment for why a real
+            // first launch doesn't do this here.
+            if isDebugReplayingFirstLaunch {
+                isDebugReplayingFirstLaunch = false
+                if AccountStore.shared.shouldShowSignInPrompt {
+                    showSignInPrompt = true
+                }
+            }
+        }) {
+            OnboardingView(onFinish: { showOnboarding = false })
         }
         // Once, ever, per install -- see AccountStore.shouldShowSignInPrompt
         // for why that's a local flag rather than a synced one. `onDismiss`
@@ -106,6 +144,30 @@ struct PoiseRootView: View {
         }
         .animation(.spring(response: 0.32, dampingFraction: 0.82), value: progressStore.pendingBadgeAnnouncements.first?.id)
     }
+
+    #if DEBUG
+    // Debug-only escape hatch (ProfileView's Testing section) -- replays
+    // both one-time first-launch gates without a real uninstall/reinstall.
+    // Resets the underlying flags, then presents onboarding immediately;
+    // the sign-in prompt follows once onboarding is dismissed (see
+    // isDebugReplayingFirstLaunch).
+    private func replayFirstLaunch() {
+        OnboardingStore.reset()
+        AccountStore.shared.resetSignInPromptShown()
+        // shouldShowSignInPrompt also requires !isSignedIn -- resetting the
+        // "already shown" flag alone does nothing once a real Sign in with
+        // Apple has happened, since the Keychain entry it wrote survives a
+        // plain reinstall (that's the whole point of using Keychain over
+        // UserDefaults here). A genuine fresh install wouldn't have that
+        // entry either, so signing out is part of faking one, not a
+        // separate side effect.
+        if AccountStore.shared.isSignedIn {
+            AccountStore.shared.signOut()
+        }
+        isDebugReplayingFirstLaunch = true
+        showOnboarding = true
+    }
+    #endif
 
     // Backgrounding is the one moment both local reminders get (re)computed
     // -- there's no server ticking these on a schedule, so this app has to

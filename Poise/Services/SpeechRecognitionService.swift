@@ -93,6 +93,13 @@ final class SpeechRecognitionService: NSObject, ObservableObject {
 
         do {
             let session = AVAudioSession.sharedInstance()
+            // Same reasoning as NPCVoiceService.prepare(): don't assume the
+            // session is idle just because this service last deactivated it
+            // cleanly -- NPCVoiceService's .playback session is the other
+            // side of every turn cycle here, so deactivate defensively
+            // before reconfiguring rather than changing category on
+            // whatever's currently active.
+            try? session.setActive(false, options: .notifyOthersOnDeactivation)
             try session.setCategory(.playAndRecord, mode: .measurement, options: [.duckOthers, .defaultToSpeaker])
             try session.setActive(true, options: .notifyOthersOnDeactivation)
 

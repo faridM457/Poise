@@ -22,6 +22,7 @@ struct CharacterAnimationView: View {
     }
 
     var mood: Mood = .idleNeutral
+    var characterSet: CharacterAppearance = .char1
     var height: CGFloat = 220
     // When true, renders as an edge-to-edge background (aspect-fill, cropped)
     // instead of the boxed avatar-card presentation -- used by the roleplay
@@ -33,18 +34,66 @@ struct CharacterAnimationView: View {
     // instead of guessing a square/circular crop like the old placeholder.
     private var width: CGFloat { height * (1178.0 / 2556.0) }
 
+    private var resourceName: String { characterSet.resourcePrefix + mood.rawValue }
+
     var body: some View {
         Group {
             if fillScreen {
-                LoopingVideoPlayer(resourceName: mood.rawValue, gravity: .resizeAspectFill)
+                LoopingVideoPlayer(resourceName: resourceName, gravity: .resizeAspectFill)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipped()
             } else {
-                LoopingVideoPlayer(resourceName: mood.rawValue, gravity: .resizeAspect)
+                LoopingVideoPlayer(resourceName: resourceName, gravity: .resizeAspect)
                     .frame(width: width, height: height)
             }
         }
         .accessibilityLabel("Character animation")
+    }
+}
+
+// Which of the app's three bundled character models an NPC renders as
+// (see EngineCharacter.appearance for how a specific NPC resolves to one of
+// these). Char1 is the original, only-ever character -- its clips keep
+// their original unprefixed filenames (Idle_Neutral.mp4, etc.) so the
+// already-shipped bundle references never had to change; Char2/Char3's
+// clips are prefixed on top of the same six mood names.
+enum CharacterAppearance: String, CaseIterable {
+    case char1, char2, char3
+
+    var resourcePrefix: String {
+        switch self {
+        case .char1: return ""
+        case .char2: return "Char2_"
+        case .char3: return "Char3_"
+        }
+    }
+
+    // Asset catalog name for the static "sitting at the desk" landscape
+    // still used on the briefing/guide/scorecard screens in place of the
+    // looping video -- see LiveLessonFlowView's Image("...FullFrame") sites.
+    var stillImageName: String {
+        switch self {
+        case .char1: return "CharFullFrame"
+        case .char2: return "Char2FullFrame"
+        case .char3: return "Char3FullFrame"
+        }
+    }
+}
+
+extension EngineCharacter {
+    // Female characters get the app's one female model (Char3). Male
+    // characters, and any character with no gender info (an older cached
+    // scenario, or a deployed engine server not yet redeployed with the
+    // field), alternate between the two male models by a stable hash of
+    // the name -- so the same character always renders the same way
+    // across replays, rather than every male NPC defaulting to the same
+    // one model the way the app did before Char2/Char3 existed.
+    var appearance: CharacterAppearance {
+        if gender?.lowercased() == "female" {
+            return .char3
+        }
+        let stableHash = name.unicodeScalars.reduce(0) { $0 + Int($1.value) }
+        return stableHash % 2 == 0 ? .char1 : .char2
     }
 }
 
@@ -69,10 +118,12 @@ enum CharacterClipPreloader {
     }
 
     // Warms the clip assets so building the player item isn't a cold file
-    // read. Called as the lesson flow opens.
-    static func preload(_ moods: [CharacterAnimationView.Mood]) {
+    // read. Called as the lesson flow opens, once the NPC's character (and
+    // therefore which of the three models it renders as) is known.
+    static func preload(_ moods: [CharacterAnimationView.Mood], for characterSet: CharacterAppearance) {
         for mood in moods {
-            guard let asset = asset(named: mood.rawValue) else { continue }
+            let name = characterSet.resourcePrefix + mood.rawValue
+            guard let asset = asset(named: name) else { continue }
             Task.detached(priority: .utility) {
                 _ = try? await asset.load(.isPlayable, .tracks)
             }
