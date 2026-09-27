@@ -3,6 +3,10 @@ import SwiftUI
 struct PoiseRootView: View {
     @State private var selectedTab: AppTab = .learn
     @State private var showSignInPrompt = false
+    @State private var showNotificationPaywall = false
+    @State private var routedCustomScenario: CustomScenario?
+    @State private var showRoutedCustomScenario = false
+    @ObservedObject private var notificationRouter = NotificationRouter.shared
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -37,6 +41,7 @@ struct PoiseRootView: View {
             if AccountStore.shared.shouldShowSignInPrompt {
                 showSignInPrompt = true
             }
+            handleNotificationDestination()
         }
         // Prefetched here, at launch, rather than left to PaywallSheet's own
         // .task -- offerings arriving *after* the paywall sheet has already
@@ -67,6 +72,33 @@ struct PoiseRootView: View {
         // "Not now", or a swipe), so the flag only needs setting in one place.
         .sheet(isPresented: $showSignInPrompt, onDismiss: { AccountStore.shared.markSignInPromptShown() }) {
             SignInPromptSheet(onDismiss: { showSignInPrompt = false })
+        }
+        .sheet(isPresented: $showNotificationPaywall) {
+            PaywallSheet(subscriptions: SubscriptionStore.shared)
+                .presentationBackground(Color.poiseCanvas)
+        }
+        .fullScreenCover(isPresented: $showRoutedCustomScenario) {
+            CustomScenarioFlowView(resuming: routedCustomScenario)
+        }
+        .onOpenURL { notificationRouter.route($0) }
+        .onChange(of: notificationRouter.pendingDestination) { _, _ in
+            handleNotificationDestination()
+        }
+    }
+
+    private func handleNotificationDestination() {
+        guard let destination = notificationRouter.consume() else { return }
+        switch destination {
+        case .learn:
+            selectedTab = .learn
+        case .progress:
+            selectedTab = .progress
+        case .paywall:
+            showNotificationPaywall = true
+        case .customScenario(let scenarioID):
+            selectedTab = .learn
+            routedCustomScenario = scenarioID.flatMap { CustomScenarioStore.shared.scenario(id: $0) }
+            showRoutedCustomScenario = true
         }
     }
 }

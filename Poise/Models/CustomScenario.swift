@@ -1,6 +1,6 @@
 import Foundation
 
-struct CustomScenario: Identifiable, Hashable {
+struct CustomScenario: Identifiable, Hashable, Codable {
     let id: String
     var title: String
     var situation: String

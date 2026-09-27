@@ -12,8 +12,10 @@ struct CustomScenarioFlowView: View {
     @State private var generatedScenario: CustomScenario?
     private let generator: any ScenarioGenerating
 
-    init(generator: (any ScenarioGenerating)? = nil) {
+    init(generator: (any ScenarioGenerating)? = nil, resuming scenario: CustomScenario? = nil) {
         self.generator = generator ?? LocalMockScenarioGenerator()
+        _generatedScenario = State(initialValue: scenario)
+        _path = State(initialValue: scenario.map { [.practice($0)] } ?? [])
     }
 
     var body: some View {

@@ -131,6 +131,7 @@ struct CustomScenarioPracticeFlowView: View {
             }
 
             Button("Start Roleplay") {
+                OneSignalNotificationService.shared.recordCustomScenarioStarted(scenario)
                 messages = [ConversationMessage(speaker: .npc, text: scenario.openingLine, characterName: scenario.counterpartRole)]
                 step = .roleplay
             }
@@ -243,7 +244,10 @@ struct CustomScenarioPracticeFlowView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Button("Continue", action: onFinish)
+            Button("Continue") {
+                OneSignalNotificationService.shared.recordCustomScenarioCompleted(scenario)
+                onFinish()
+            }
                 .buttonStyle(PoiseFlatButtonStyle(fullWidth: true))
         }
     }

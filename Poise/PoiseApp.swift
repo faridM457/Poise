@@ -10,6 +10,7 @@ struct PoiseApp: App {
         #endif
 
         Purchases.configure(withAPIKey: RevenueCatConfig.apiKey)
+        OneSignalNotificationService.shared.initialize()
 
         // No App Tracking Transparency prompt is requested anywhere in the
         // app yet, so this always serves non-personalized ads (no IDFA) --

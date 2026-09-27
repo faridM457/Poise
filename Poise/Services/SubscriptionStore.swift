@@ -176,5 +176,7 @@ final class SubscriptionStore: ObservableObject {
     // Pushing the entitlement down to it keeps one answer in the app.
     private func syncEntitlement() {
         LearnProgressStore.shared.applyEntitlement(isPro: isPro)
+        OneSignalNotificationService.shared.recordSubscriptionChanged(isPro: isPro)
+        OneSignalNotificationService.shared.synchronizeUserData(isPro: isPro, progress: LearnProgressStore.shared)
     }
 }
