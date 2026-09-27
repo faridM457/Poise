@@ -1,6 +1,15 @@
 {
-  "originHash" : "b86dcf902fa086f9400170d4e9b6bd256f05b3ed59defaf72472cc5dacb78b69",
+  "originHash" : "7e999ef963969ce0db711b7f7aefc4420944fcd07ade7be251afb5d78a81f99e",
   "pins" : [
+    {
+      "identity" : "onesignal-xcframework",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/OneSignal/OneSignal-XCFramework",
+      "state" : {
+        "revision" : "c57e23b501cee0a988342a384a4c3ed0dc75ff56",
+        "version" : "5.7.0"
+      }
+    },
     {
       "identity" : "purchases-ios-admob",
       "kind" : "remoteSourceControl",

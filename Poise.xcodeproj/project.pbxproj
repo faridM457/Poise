@@ -7,13 +7,27 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		4B7C913047A022AF05CA9874 /* PocketTTS.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3B2A73BD70DC2E85640DA344 /* PocketTTS.xcframework */; };
-		ACC6D817BF86B16CFE007955 /* PocketTTS.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 3B2A73BD70DC2E85640DA344 /* PocketTTS.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		115E043E3058B86300442C82 /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = 115E043D3058B86300442C82 /* RevenueCat */; };
 		115E04403058B86B00442C82 /* RevenueCatUI in Frameworks */ = {isa = PBXBuildFile; productRef = 115E043F3058B86B00442C82 /* RevenueCatUI */; };
-		F0816664C246C754687CC597 /* GoogleMobileAds in Frameworks */ = {isa = PBXBuildFile; productRef = 58FE8F3419777352E0542D74 /* GoogleMobileAds */; };
+		11772FB73068AAA9006CD594 /* OneSignalFramework in Frameworks */ = {isa = PBXBuildFile; productRef = 11772FB63068AAA9006CD594 /* OneSignalFramework */; };
+		11772FB93068AAA9006CD594 /* OneSignalInAppMessages in Frameworks */ = {isa = PBXBuildFile; productRef = 11772FB83068AAA9006CD594 /* OneSignalInAppMessages */; };
+		11772FC53068AAE9006CD594 /* OneSignalNotificationServiceExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 11772FBE3068AAE8006CD594 /* OneSignalNotificationServiceExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		11772FCD3068ABE8006CD594 /* OneSignalExtension in Frameworks */ = {isa = PBXBuildFile; productRef = 11772FCC3068ABE8006CD594 /* OneSignalExtension */; };
+		4B7C913047A022AF05CA9874 /* PocketTTS.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3B2A73BD70DC2E85640DA344 /* PocketTTS.xcframework */; };
 		919788DC44434548B07B9630 /* RevenueCatAdMob in Frameworks */ = {isa = PBXBuildFile; productRef = D75EE1A9C9BD4222BD4A3295 /* RevenueCatAdMob */; };
+		ACC6D817BF86B16CFE007955 /* PocketTTS.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 3B2A73BD70DC2E85640DA344 /* PocketTTS.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		F0816664C246C754687CC597 /* GoogleMobileAds in Frameworks */ = {isa = PBXBuildFile; productRef = 58FE8F3419777352E0542D74 /* GoogleMobileAds */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		11772FC33068AAE9006CD594 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 115E03A73055171A00442C82 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 11772FBD3068AAE8006CD594;
+			remoteInfo = OneSignalNotificationServiceExtension;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
 		0EEF771E77E910771FF8059A /* Embed Frameworks */ = {
@@ -27,17 +41,47 @@
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		11772FCA3068AAE9006CD594 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				11772FC53068AAE9006CD594 /* OneSignalNotificationServiceExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		115E03AF3055171A00442C82 /* Poise.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Poise.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		11772FBE3068AAE8006CD594 /* OneSignalNotificationServiceExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OneSignalNotificationServiceExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		3B2A73BD70DC2E85640DA344 /* PocketTTS.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = PocketTTS.xcframework; path = Frameworks/PocketTTS.xcframework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		11772FC63068AAE9006CD594 /* Exceptions for "OneSignalNotificationServiceExtension" folder in "OneSignalNotificationServiceExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 11772FBD3068AAE8006CD594 /* OneSignalNotificationServiceExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		115E03B13055171A00442C82 /* Poise */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Poise;
+			sourceTree = "<group>";
+		};
+		11772FBF3068AAE9006CD594 /* OneSignalNotificationServiceExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				11772FC63068AAE9006CD594 /* Exceptions for "OneSignalNotificationServiceExtension" folder in "OneSignalNotificationServiceExtension" target */,
+			);
+			path = OneSignalNotificationServiceExtension;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -49,9 +93,19 @@
 			files = (
 				4B7C913047A022AF05CA9874 /* PocketTTS.xcframework in Frameworks */,
 				115E04403058B86B00442C82 /* RevenueCatUI in Frameworks */,
+				11772FB93068AAA9006CD594 /* OneSignalInAppMessages in Frameworks */,
 				F0816664C246C754687CC597 /* GoogleMobileAds in Frameworks */,
 				115E043E3058B86300442C82 /* RevenueCat in Frameworks */,
+				11772FB73068AAA9006CD594 /* OneSignalFramework in Frameworks */,
 				919788DC44434548B07B9630 /* RevenueCatAdMob in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		11772FBB3068AAE8006CD594 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				11772FCD3068ABE8006CD594 /* OneSignalExtension in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -62,6 +116,7 @@
 			isa = PBXGroup;
 			children = (
 				115E03B13055171A00442C82 /* Poise */,
+				11772FBF3068AAE9006CD594 /* OneSignalNotificationServiceExtension */,
 				115E043C3058B86300442C82 /* Frameworks */,
 				115E03B03055171A00442C82 /* Products */,
 				386C415C3057521600C8CFB5 /* Recovered References */,
@@ -72,8 +127,16 @@
 			isa = PBXGroup;
 			children = (
 				115E03AF3055171A00442C82 /* Poise.app */,
+				11772FBE3068AAE8006CD594 /* OneSignalNotificationServiceExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		115E043C3058B86300442C82 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 		386C415C3057521600C8CFB5 /* Recovered References */ = {
@@ -82,13 +145,6 @@
 				3B2A73BD70DC2E85640DA344 /* PocketTTS.xcframework */,
 			);
 			name = "Recovered References";
-			sourceTree = "<group>";
-		};
-		115E043C3058B86300442C82 /* Frameworks */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -102,10 +158,12 @@
 				115E03AC3055171A00442C82 /* Frameworks */,
 				115E03AD3055171A00442C82 /* Resources */,
 				0EEF771E77E910771FF8059A /* Embed Frameworks */,
+				11772FCA3068AAE9006CD594 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				11772FC43068AAE9006CD594 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				115E03B13055171A00442C82 /* Poise */,
@@ -116,10 +174,35 @@
 				115E043F3058B86B00442C82 /* RevenueCatUI */,
 				58FE8F3419777352E0542D74 /* GoogleMobileAds */,
 				D75EE1A9C9BD4222BD4A3295 /* RevenueCatAdMob */,
+				11772FB63068AAA9006CD594 /* OneSignalFramework */,
+				11772FB83068AAA9006CD594 /* OneSignalInAppMessages */,
 			);
 			productName = Poise;
 			productReference = 115E03AF3055171A00442C82 /* Poise.app */;
 			productType = "com.apple.product-type.application";
+		};
+		11772FBD3068AAE8006CD594 /* OneSignalNotificationServiceExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 11772FC73068AAE9006CD594 /* Build configuration list for PBXNativeTarget "OneSignalNotificationServiceExtension" */;
+			buildPhases = (
+				11772FBA3068AAE8006CD594 /* Sources */,
+				11772FBB3068AAE8006CD594 /* Frameworks */,
+				11772FBC3068AAE8006CD594 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				11772FBF3068AAE9006CD594 /* OneSignalNotificationServiceExtension */,
+			);
+			name = OneSignalNotificationServiceExtension;
+			packageProductDependencies = (
+				11772FCC3068ABE8006CD594 /* OneSignalExtension */,
+			);
+			productName = OneSignalNotificationServiceExtension;
+			productReference = 11772FBE3068AAE8006CD594 /* OneSignalNotificationServiceExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -127,13 +210,16 @@
 		115E03A73055171A00442C82 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
-				ORGANIZATIONNAME = "Saper Solutions";
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2660;
+				LastSwiftUpdateCheck = 2700;
 				LastUpgradeCheck = 2660;
+				ORGANIZATIONNAME = "Saper Solutions";
 				TargetAttributes = {
 					115E03AE3055171A00442C82 = {
 						CreatedOnToolsVersion = 26.6;
+					};
+					11772FBD3068AAE8006CD594 = {
+						CreatedOnToolsVersion = 27.0;
 					};
 				};
 			};
@@ -150,6 +236,7 @@
 				115E043B3058AFEC00442C82 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */,
 				573234933145F6C2D78136CD /* XCRemoteSwiftPackageReference "swift-package-manager-google-mobile-ads" */,
 				073ED7B34FDA4C3D90FAC2C1 /* XCRemoteSwiftPackageReference "purchases-ios-admob" */,
+				11772FB53068AAA9006CD594 /* XCRemoteSwiftPackageReference "OneSignal-XCFramework" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 115E03B03055171A00442C82 /* Products */;
@@ -157,12 +244,20 @@
 			projectRoot = "";
 			targets = (
 				115E03AE3055171A00442C82 /* Poise */,
+				11772FBD3068AAE8006CD594 /* OneSignalNotificationServiceExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		115E03AD3055171A00442C82 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		11772FBC3068AAE8006CD594 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -179,7 +274,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		11772FBA3068AAE8006CD594 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		11772FC43068AAE9006CD594 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 11772FBD3068AAE8006CD594 /* OneSignalNotificationServiceExtension */;
+			targetProxy = 11772FC33068AAE9006CD594 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		115E03B83055171C00442C82 /* Debug */ = {
@@ -314,6 +424,9 @@
 				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Poise uses your microphone so you can speak your response instead of typing it.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Poise transcribes your spoken response on-device so you can review it before sending.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -324,15 +437,6 @@
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
-				// Pinned high (not the code's own floor of 17.0-17.5, see
-				// @available markers) because a lower target triggers a
-				// deterministic Swift 6.3.3 compiler crash (EarlyPerfInliner
-				// segfault in whole-module -O) on pocket_tts_ios.swift's
-				// generated UniffiHandleMap deinit -- reproduced twice at
-				// 17.5, absent at this value. Confirmed this is the actual
-				// cause, not a flake, before reverting to it. Revisit once
-				// there's a newer Xcode/Swift toolchain or a rebuilt
-				// PocketTTS.xcframework to retest against.
 				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
@@ -351,7 +455,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1";
+				TARGETED_DEVICE_FAMILY = 1;
 				XROS_DEPLOYMENT_TARGET = 26.5;
 			};
 			name = Debug;
@@ -374,6 +478,9 @@
 				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Poise uses your microphone so you can speak your response instead of typing it.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Poise transcribes your spoken response on-device so you can review it before sending.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -384,15 +491,6 @@
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
-				// Pinned high (not the code's own floor of 17.0-17.5, see
-				// @available markers) because a lower target triggers a
-				// deterministic Swift 6.3.3 compiler crash (EarlyPerfInliner
-				// segfault in whole-module -O) on pocket_tts_ios.swift's
-				// generated UniffiHandleMap deinit -- reproduced twice at
-				// 17.5, absent at this value. Confirmed this is the actual
-				// cause, not a flake, before reverting to it. Revisit once
-				// there's a newer Xcode/Swift toolchain or a rebuilt
-				// PocketTTS.xcframework to retest against.
 				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
@@ -411,8 +509,69 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1";
+				TARGETED_DEVICE_FAMILY = 1;
 				XROS_DEPLOYMENT_TARGET = 26.5;
+			};
+			name = Release;
+		};
+		11772FC83068AAE9006CD594 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5335LL5R57;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OneSignalNotificationServiceExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = OneSignalNotificationServiceExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Saper Solutions. All rights reserved.";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sapersolutions.poise.OneSignalNotificationServiceExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		11772FC93068AAE9006CD594 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5335LL5R57;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OneSignalNotificationServiceExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = OneSignalNotificationServiceExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Saper Solutions. All rights reserved.";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sapersolutions.poise.OneSignalNotificationServiceExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
 		};
@@ -437,9 +596,26 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		11772FC73068AAE9006CD594 /* Build configuration list for PBXNativeTarget "OneSignalNotificationServiceExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				11772FC83068AAE9006CD594 /* Debug */,
+				11772FC93068AAE9006CD594 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		073ED7B34FDA4C3D90FAC2C1 /* XCRemoteSwiftPackageReference "purchases-ios-admob" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/RevenueCat/purchases-ios-admob.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.90.2;
+			};
+		};
 		115E043B3058AFEC00442C82 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/RevenueCat/purchases-ios-spm.git";
@@ -448,20 +624,20 @@
 				minimumVersion = 5.89.0;
 			};
 		};
+		11772FB53068AAA9006CD594 /* XCRemoteSwiftPackageReference "OneSignal-XCFramework" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/OneSignal/OneSignal-XCFramework";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.7.0;
+			};
+		};
 		573234933145F6C2D78136CD /* XCRemoteSwiftPackageReference "swift-package-manager-google-mobile-ads" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/googleads/swift-package-manager-google-mobile-ads.git";
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 13.0.0;
-			};
-		};
-		073ED7B34FDA4C3D90FAC2C1 /* XCRemoteSwiftPackageReference "purchases-ios-admob" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/RevenueCat/purchases-ios-admob.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 5.90.2;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -476,6 +652,21 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 115E043B3058AFEC00442C82 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */;
 			productName = RevenueCatUI;
+		};
+		11772FB63068AAA9006CD594 /* OneSignalFramework */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 11772FB53068AAA9006CD594 /* XCRemoteSwiftPackageReference "OneSignal-XCFramework" */;
+			productName = OneSignalFramework;
+		};
+		11772FB83068AAA9006CD594 /* OneSignalInAppMessages */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 11772FB53068AAA9006CD594 /* XCRemoteSwiftPackageReference "OneSignal-XCFramework" */;
+			productName = OneSignalInAppMessages;
+		};
+		11772FCC3068ABE8006CD594 /* OneSignalExtension */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 11772FB53068AAA9006CD594 /* XCRemoteSwiftPackageReference "OneSignal-XCFramework" */;
+			productName = OneSignalExtension;
 		};
 		58FE8F3419777352E0542D74 /* GoogleMobileAds */ = {
 			isa = XCSwiftPackageProductDependency;

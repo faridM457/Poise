@@ -2,6 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>aps-environment</key>
+	<string>development</string>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.sapersolutions.poise.onesignal</string>
+	</array>
 	<!-- Lets the app present the Sign in with Apple button. REQUIRES the
 	     "Sign In with Apple" capability to also be enabled on the App ID in
 	     the Apple Developer portal -- that part only the account holder can
