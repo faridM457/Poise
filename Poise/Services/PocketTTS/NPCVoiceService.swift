@@ -3,10 +3,11 @@ import Foundation
 
 // Synthesizes NPC dialogue on-device via Pocket TTS (kyutai-labs, ported
 // from the working PocketTTSDemo harness built earlier this session) and
-// plays it back. Jean is the only voice wired in for this first pass -- of
-// Pocket TTS's built-in voices, it's the one Kyutai's own catalog officially
-// labels "conversation" rather than "reading" (see project notes), and it's
-// the only one whose embedding is bundled here.
+// plays it back. Each of the app's three character models (see
+// CharacterAppearance) speaks in its own voice -- Jean, Marius, and Alba --
+// picked from Pocket TTS's own 8-voice catalog by calling
+// PocketTTSSwift.voices at runtime and reading its name/gender/description
+// metadata, not guessed from the (Les Misérables-derived) file names alone.
 // Not ObservableObject -- nothing observes this directly as a SwiftUI view
 // model; LiveLessonViewModel calls it and republishes what the UI needs
 // (currentSpeechDuration, isSynthesizingSpeech) itself.
@@ -20,21 +21,18 @@ final class NPCVoiceService: NSObject {
         let durationSeconds: Double
     }
 
-    // Confirmed from the working PocketTTSDemo harness's TTSVoice enum
-    // (case jean = 3), not guessed.
-    private static let jeanVoiceIndex: UInt32 = 3
-
     private var engine: PocketTTSSwift?
     private var loadTask: Task<PocketTTSSwift, Error>?
     private var player: AVAudioPlayer?
     private var playerDelegate: AudioPlayerCompletionDelegate?
 
-    /// Synthesizes `text` in Jean's voice. Loads the model lazily on first
-    /// call (staging bundle resources into a real directory tree first --
-    /// see PocketTTSModelStaging) and reuses it afterward.
-    func speak(_ text: String) async throws -> Speech {
+    /// Synthesizes `text` in the given voice (see CharacterAppearance.voiceIndex).
+    /// Loads the model lazily on first call (staging bundle resources into a
+    /// real directory tree first -- see PocketTTSModelStaging) and reuses it
+    /// afterward.
+    func speak(_ text: String, voice: UInt32) async throws -> Speech {
         let engine = try await loadedEngine()
-        let result = try await engine.synthesize(text: text, voice: Self.jeanVoiceIndex)
+        let result = try await engine.synthesize(text: text, voice: voice)
         return Speech(audioData: result.audioData, durationSeconds: result.durationSeconds)
     }
 
@@ -113,7 +111,11 @@ final class NPCVoiceService: NSObject {
             let modelDir = try PocketTTSModelStaging.stagedModelDirectory()
             let newEngine = PocketTTSSwift(modelPath: modelDir.path)
             try await newEngine.load()
-            try await newEngine.configure(.init(voiceIndex: Self.jeanVoiceIndex, useFixedSeed: true))
+            // The configured index here is only ever a startup default --
+            // every real call goes through speak(_:voice:), which passes an
+            // explicit per-character voice straight to synthesizeWithVoice
+            // and overrides this regardless.
+            try await newEngine.configure(.init(voiceIndex: 3, useFixedSeed: true))
             return newEngine
         }
         loadTask = task

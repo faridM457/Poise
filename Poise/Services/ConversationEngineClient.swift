@@ -137,12 +137,18 @@ struct SkillScores: Codable {
     let clarity: SkillScore
     let empathy: SkillScore
     let resolution: SkillScore
+    // Nil whenever no turn in the conversation had usable recorded audio --
+    // absent, not a low score, since there's nothing to grade delivery from.
+    // Optional (with a decode default) so a response from an engine that
+    // doesn't send it yet still decodes.
+    var delivery: SkillScore? = nil
 
-    subscript(skill: PoiseSkill) -> SkillScore {
+    subscript(skill: PoiseSkill) -> SkillScore? {
         switch skill {
         case .clarity: return clarity
         case .empathy: return empathy
         case .resolution: return resolution
+        case .delivery: return delivery
         }
     }
 }
@@ -163,11 +169,16 @@ struct FeedbackResponse: Codable {
     // because inventing an explanation would be worse than showing none.
     var skillLevels: [PoiseSkill: SkillLevel] {
         if let skills {
-            return [
+            var levels: [PoiseSkill: SkillLevel] = [
                 .clarity: skills.clarity.skillLevel,
                 .empathy: skills.empathy.skillLevel,
                 .resolution: skills.resolution.skillLevel,
             ]
+            // Absent, not defaulted -- see SkillScores.delivery's doc. A
+            // missing key here (not a synthesized level) is what tells
+            // SkillScoreCard to leave the chip off entirely.
+            if let delivery = skills.delivery { levels[.delivery] = delivery.skillLevel }
+            return levels
         }
         return [.clarity: clarityLevel, .empathy: empathyLevel, .resolution: resolutionLevel]
     }
@@ -180,7 +191,7 @@ struct FeedbackResponse: Codable {
     // two criteria the screen deliberately withholds. Better to show the
     // level alone than to imply an explanation that isn't there.
     func note(for skill: PoiseSkill) -> String? {
-        skills?[skill].note
+        skills?[skill]?.note
     }
 
     // Coarse levels are still derivable from signals the engine returns even
@@ -317,16 +328,24 @@ enum ConversationEngineClient {
         deductionCount: Int,
         resolution: String,
         empathyLevels: [String],
-        conversationToken: String?
+        conversationToken: String?,
+        // Reduced on-device voice-analysis output (coverage + aggregates
+        // only -- see LiveLessonViewModel.finishVoiceSessionAndSummarize).
+        // Nil whenever no user turn had usable audio, analysis failed, or
+        // the feature is unavailable; delivery grading is additive, never
+        // required for feedback to work.
+        voiceSummary: [String: Any]? = nil
     ) async throws -> FeedbackResponse {
-        try await post("api/feedback", body: lessonPayload(lesson).merging([
+        var body = lessonPayload(lesson).merging([
             "scenario": scenarioPayload(scenario),
             "history": history.map(historyPayload),
             "metCriteria": metCriteria,
             "deductionCount": deductionCount,
             "resolution": resolution,
             "empathyLevels": empathyLevels,
-        ]) { _, new in new }, conversationToken: conversationToken)
+        ]) { _, new in new }
+        if let voiceSummary { body["voiceSummary"] = voiceSummary }
+        return try await post("api/feedback", body: body, conversationToken: conversationToken)
     }
 
     // Built-in lessons send just an id, looked up server-side. A custom

@@ -65,6 +65,26 @@ function isValidCustomLesson(lesson) {
   return true;
 }
 
+// The client-reduced voice-analysis summary (coverage + aggregates only --
+// see LiveLessonViewModel.finishVoiceSessionAndSummarize) riding along on
+// /api/feedback. Loose bounds only, same reasoning as isValidCustomLesson:
+// this is real, trusted-shape data from the app's own on-device pipeline,
+// not user-authored text, but it's still client-supplied on every request,
+// so a byte cap stops a malformed/oversized payload from inflating the
+// grading prompt. generateFeedback treats its contents as untrusted
+// measurements regardless, never as instructions.
+const VOICE_SUMMARY_BYTE_LIMIT = 32 * 1024;
+
+function isValidVoiceSummary(voiceSummary) {
+  if (voiceSummary == null) return false;
+  if (typeof voiceSummary !== "object" || Array.isArray(voiceSummary)) return false;
+  try {
+    return Buffer.byteLength(JSON.stringify(voiceSummary), "utf8") <= VOICE_SUMMARY_BYTE_LIMIT;
+  } catch {
+    return false;
+  }
+}
+
 // Built-in lessons are looked up by id, same as always. A custom scenario
 // (see /api/custom-scenario) isn't in that static list, so the client
 // carries the full lesson object it was handed at generation time on every
@@ -253,7 +273,7 @@ app.post("/api/feedback", rateLimit("feedback", { limit: 15 }), requireConversat
   try {
     const lesson = resolveLesson(req);
     if (!lesson) return res.status(404).json({ error: "Unknown or invalid lesson" });
-    const { scenario, history, metCriteria, deductionCount, resolution, empathyLevels } = req.body;
+    const { scenario, history, metCriteria, deductionCount, resolution, empathyLevels, voiceSummary } = req.body;
 
     const feedback = await generateFeedback({
       lesson,
@@ -263,6 +283,7 @@ app.post("/api/feedback", rateLimit("feedback", { limit: 15 }), requireConversat
       deductionCount,
       resolution,
       empathyLevels,
+      voiceSummary: isValidVoiceSummary(voiceSummary) ? voiceSummary : null,
     });
 
     const energyRow = await getState(req.poiseUser, { verifyPro });

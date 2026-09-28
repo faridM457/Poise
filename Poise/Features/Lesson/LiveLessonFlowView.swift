@@ -103,6 +103,11 @@ struct LiveLessonFlowView: View {
             // view above turns that into an already-decoding layer.
             CharacterClipPreloader.preload([.idleNeutral, .talkNeutral], for: viewModel.character?.appearance ?? .char1)
         }
+        // Fires when the WHOLE flow closes, on any step -- broader than
+        // LiveRoleplayView's own stopSpeaking() (roleplay step only). Cancels
+        // any voice-analysis assembly still in flight so it can't finish and
+        // populate voicePayload after the user has already left.
+        .onDisappear { viewModel.abandonVoiceSession() }
     }
 
     private var content: some View {
@@ -567,12 +572,27 @@ private struct LiveRoleplayView: View {
     @State private var response = ""
     @FocusState private var isWriting: Bool
     @StateObject private var speech = SpeechRecognitionService()
+    // True from the moment Send is tapped until sendUserResponse settles --
+    // covers the gap between tapping and speech.finalizedInput() actually
+    // resolving, which composerLocked's other flags don't (isSendingTurn
+    // only flips true once the network call itself starts).
+    @State private var isSubmitting = false
     // Set only once the FINAL npc_reply has finished its word-by-word
     // reveal (and, by extension, finished playing) -- see the onReview
     // transition below for why this exists instead of reacting to
     // viewModel.ended directly.
     @State private var finalMessageRevealed = false
     @State private var showTranscript = false
+    // True by default (not false) -- covers the window between this screen
+    // appearing and the opening line's reveal actually starting (the
+    // deliberate pre-dialogue delay plus voice synthesis time in
+    // presentOpeningLineIfNeeded), during which viewModel.isSendingTurn is
+    // never true (that flag only ever covers sendUserResponse's own round
+    // trip) and viewModel.messages is still empty, so nothing else was
+    // blocking the composer. Flips true again on every later reveal too --
+    // see composerLocked below for why sending mid-reply must not be
+    // allowed.
+    @State private var npcIsSpeaking = true
 
     // Measured directly from an extracted frame of Idle_Neutral.mp4 (frame
     // 30, via ffmpeg) -- not a guess. Face occupies roughly 27%-51% of frame
@@ -715,9 +735,13 @@ private struct LiveRoleplayView: View {
                     message: latest,
                     animateReveal: latest.speaker != .user,
                     speechDuration: viewModel.currentSpeechDuration,
-                    onRevealStart: { characterMood = .talkNeutral },
+                    onRevealStart: {
+                        characterMood = .talkNeutral
+                        npcIsSpeaking = true
+                    },
                     onRevealComplete: {
                         characterMood = .idleNeutral
+                        npcIsSpeaking = false
                         if viewModel.ended { finalMessageRevealed = true }
                     }
                 )
@@ -753,14 +777,20 @@ private struct LiveRoleplayView: View {
                     .background(.white)
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .focused($isWriting)
-                    .disabled(viewModel.isSendingTurn)
+                    .disabled(composerLocked)
                     .accessibilityLabel("Typed response")
 
                 // Fills the text field as the user speaks, live -- never
                 // sends automatically. The user reviews/edits before tapping
                 // send, same non-destructive pattern as the browser mic
-                // button in conversation-engine.
-                Button(action: speech.toggleListening) {
+                // button in conversation-engine. Also suppresses NPC
+                // playback for the duration (setUserRecording) so the mic
+                // doesn't pick up the NPC's own voice over the speaker.
+                Button {
+                    viewModel.setUserRecording(true)
+                    speech.toggleListening()
+                    viewModel.setUserRecording(speech.isCapturing)
+                } label: {
                     Image(systemName: speech.isListening ? "mic.fill" : "mic")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(speech.isListening ? .white : .white.opacity(0.85))
@@ -768,7 +798,7 @@ private struct LiveRoleplayView: View {
                         .background(speech.isListening ? Color.red.opacity(0.85) : .white.opacity(0.18))
                         .clipShape(Circle())
                 }
-                .disabled(viewModel.isSendingTurn)
+                .disabled(composerLocked || speech.isFinalizing)
                 .accessibilityLabel(speech.isListening ? "Stop dictating" : "Speak your response")
 
                 Button(action: sendResponse) {
@@ -781,10 +811,17 @@ private struct LiveRoleplayView: View {
             }
         }
         .onChange(of: speech.transcript) { _, newValue in
-            guard !newValue.isEmpty else { return }
+            guard !isSubmitting, !newValue.isEmpty else { return }
             response = newValue
         }
-        .onDisappear { speech.stopListening() }
+        .onChange(of: speech.isListening) { _, listening in
+            if listening { response = "" }
+        }
+        .onChange(of: speech.isCapturing) { _, recording in viewModel.setUserRecording(recording) }
+        .onDisappear {
+            speech.discardDraft()
+            viewModel.setUserRecording(false)
+        }
         .sheet(isPresented: $showTranscript) {
             ConversationTranscriptSheet(messages: viewModel.messages, characterName: viewModel.character?.name)
         }
@@ -805,15 +842,39 @@ private struct LiveRoleplayView: View {
         .padding(.bottom, 8)
     }
 
+    // Locked for the whole time the NPC is "talking" -- voice synthesis,
+    // audio playback, and the word-by-word reveal all read as one
+    // uninterruptible turn from the user's side. Without this, the composer
+    // was only ever disabled by isSendingTurn, which covers the network
+    // round trip but not synthesis (isSynthesizingSpeech) or the reveal
+    // itself (npcIsSpeaking) -- both real windows where a fast typist could
+    // otherwise send a reply the NPC hadn't finished delivering yet, talking
+    // over them mid-sentence.
+    private var composerLocked: Bool {
+        viewModel.isSendingTurn || viewModel.isSynthesizingSpeech || npcIsSpeaking || isSubmitting
+    }
+
     private var sendDisabled: Bool {
-        response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isSendingTurn
+        response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || composerLocked || speech.isStarting
     }
 
     private func sendResponse() {
         let trimmed = response
-        response = ""
+        isSubmitting = true
         isWriting = false
-        Task { await viewModel.sendUserResponse(trimmed) }
+        Task {
+            // Seals whatever recording was in progress (or already
+            // finished) into a VoiceTurnInput -- .typed if none was ever
+            // started. Awaiting this also naturally stops any active
+            // dictation, so the mic can't keep listening into the next turn.
+            let input = await speech.finalizedInput()
+            viewModel.setUserRecording(false)
+            if await viewModel.sendUserResponse(trimmed, voiceInput: input) {
+                response = ""
+                speech.discardDraft()
+            }
+            isSubmitting = false
+        }
     }
 }
 
@@ -963,11 +1024,20 @@ private struct LiveScorecardView: View {
 private struct SkillScoreCard: View {
     let feedback: FeedbackResponse
 
+    // Delivery is additive, not guaranteed -- only shown when the
+    // conversation actually had a graded delivery score (i.e. at least one
+    // turn had usable recorded audio). The original three are always graded.
+    private var shownSkills: [PoiseSkill] {
+        var skills: [PoiseSkill] = [.clarity, .empathy, .resolution]
+        if feedback.skillLevels[.delivery] != nil { skills.append(.delivery) }
+        return skills
+    }
+
     var body: some View {
         PoiseSection(title: "How it went") {
             PoiseSurfaceCard(padding: 0) {
                 VStack(spacing: 0) {
-                    ForEach(Array(PoiseSkill.allCases.enumerated()), id: \.element.id) { index, skill in
+                    ForEach(Array(shownSkills.enumerated()), id: \.element.id) { index, skill in
                         if index > 0 {
                             PoiseDivider().padding(.leading, 68)
                         }

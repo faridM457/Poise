@@ -59,6 +59,7 @@ struct ProfileView: View {
                         EnergyCheatCard(store: store)
                         ClockCheatCard(store: store)
                         SkipRoleplayCard(store: store)
+                        VoiceAnalysisDiagnosticsButton()
                         ReplayFirstLaunchCard(action: onDebugReplayFirstLaunch)
                     }
                 }

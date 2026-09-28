@@ -59,7 +59,18 @@ struct WordRevealText: View {
                 }
                 onRevealStart?()
                 for index in words.indices {
-                    if Task.isCancelled { return }
+                    // Always call onRevealComplete, even on cancellation --
+                    // a caller (LiveRoleplayView) uses onRevealStart/
+                    // onRevealComplete to gate whether the user can send a
+                    // reply, so a cancelled reveal that skipped this call
+                    // would leave the composer permanently locked. If a new
+                    // line's reveal starts right after, its own
+                    // onRevealStart fires immediately behind this, so
+                    // nothing is actually left unlocked that shouldn't be.
+                    if Task.isCancelled {
+                        onRevealComplete?()
+                        return
+                    }
                     revealedWordCount += 1
                     if revealedWordCount < words.count {
                         try? await Task.sleep(nanoseconds: UInt64(durations[index] * 1_000_000_000))

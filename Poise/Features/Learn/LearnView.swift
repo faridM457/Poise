@@ -90,13 +90,19 @@ struct LearnView: View {
         VStack(alignment: .leading, spacing: 26) {
             GreetingHeader(remainingThisWeek: store.remainingThisWeek)
 
+            // Leads with the status summary before the action card -- the
+            // greeting text right above already references the weekly goal
+            // ("N more conversations to hit this week's goal"), so this is
+            // the dashboard visual for that same number, not a buried stat.
+            // No eyebrow label of its own: a one-line "N of N sessions
+            // practiced" row is self-explanatory, and a "THIS WEEK" heading
+            // above a strip this slim read as more structure than the
+            // content warranted.
+            WeeklyActivityCard(week: store.weekEndingToday, completed: store.conversationsThisWeek, goal: store.weeklyGoal)
+
             UpNextCard(upNext: store.upNext, onStart: attemptStart)
 
             PoiseSection(title: "Explore units", showsRule: true) { unitGrid }
-
-            PoiseSection(title: "This week", showsRule: true) {
-                WeeklyActivityCard(week: store.weekEndingToday, completed: store.conversationsThisWeek, goal: store.weeklyGoal)
-            }
 
             // Its own section, not a bare card tacked on after "This week" --
             // every other block here gets an eyebrow announcing a new
@@ -747,64 +753,55 @@ private struct SegmentedProgressBar: View {
 // Real per-day data (already tracked for the Progress tab) rather than a
 // single summary number -- seven marks make the week's shape legible at a
 // glance and give the page a quiet visual anchor at the bottom.
+// Deliberately a glance, not the calendar -- the full day-by-day breakdown
+// with weekday letters already lives on the Progress tab
+// (ProgressDashboardView). This just needs to be a quick status line above
+// UpNextCard, the page's strongest element, not a second card fighting it
+// for height and attention.
 private struct WeeklyActivityCard: View {
     let week: [PracticeDay]
     let completed: Int
     let goal: Int
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        HStack(spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("\(completed) of \(goal)")
-                    .font(PoiseType.headline())
+                    .font(PoiseType.subhead(.bold))
                     .foregroundStyle(Color.poiseNavy)
                 Text("sessions practiced")
-                    .font(PoiseType.subhead(.semibold))
+                    .font(PoiseType.caption())
                     .foregroundStyle(Color.poiseMuted)
-                Spacer(minLength: 0)
             }
-
-            HStack(spacing: 7) {
+            Spacer(minLength: 8)
+            HStack(spacing: 5) {
                 ForEach(week) { day in
-                    DayMark(day: day)
+                    DayDot(day: day)
                 }
             }
         }
-        .padding(16)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .poiseCard(radius: 20)
+        .poiseCard(radius: 16)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(completed) of \(goal) sessions practiced this week")
     }
 }
 
-private struct DayMark: View {
+private struct DayDot: View {
     let day: PracticeDay
 
     var body: some View {
-        VStack(spacing: 7) {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(day.practiced ? Color.poiseBlue : Color.poiseTrack)
-                .frame(height: 36)
-                .overlay {
-                    if day.practiced {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 12, weight: .heavy))
-                            .foregroundStyle(.white)
-                    }
+        Circle()
+            .fill(day.practiced ? Color.poiseBlue : Color.poiseTrack)
+            .frame(width: 10, height: 10)
+            .overlay {
+                if day.isToday {
+                    Circle().stroke(Color.poiseBlueDark, lineWidth: 1.5)
+                        .frame(width: 14, height: 14)
                 }
-                .overlay {
-                    if day.isToday {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(Color.poiseBlueDark, lineWidth: 2)
-                    }
-                }
-
-            Text(day.weekday)
-                .font(PoiseType.eyebrow())
-                .foregroundStyle(day.isToday ? Color.poiseNavy : Color.poiseMuted)
-        }
-        .frame(maxWidth: .infinity)
+            }
     }
 }
 

@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import PoiseVoiceAnalysis
 
 // Drives one real, server-generated lesson conversation end to end:
 // scenario -> opening line -> per-turn generation+grading -> feedback.
@@ -24,6 +25,30 @@ final class LiveLessonViewModel: ObservableObject {
 
     let lessonRef: LessonReference
     var lessonId: String { lessonRef.lessonId }
+
+    // On-device acoustic analysis of the user's own recorded turns (see
+    // AGENTS.md's voice-delivery-analysis exception). Assembled into one
+    // conversation-level payload at the end of the lesson (finishVoiceSession)
+    // and sent alongside the existing turn/feedback data so the scorecard can
+    // grade delivery the same way it grades clarity/empathy/resolution.
+    let voiceSession = VoiceConversationSession()
+    @Published private(set) var voicePayload: Data?
+    @Published private(set) var voiceAnalysisError: String?
+    private var voiceFinishTask: Task<Void, Never>?
+    // True while the user is actively recording their own turn -- NPC
+    // playback is suppressed during this window so the mic doesn't pick up
+    // the NPC's own voice over the speaker.
+    private var suppressNPCPlayback = false
+    // Invalidates an in-flight presentNPCMessage() synthesis if suppression
+    // or dismissal state changes before it resolves -- same class of
+    // check-after-await race as isDismissed, scoped to this one flag pair.
+    private var playbackGeneration = UUID()
+    // Set once the WHOLE lesson flow (not just the roleplay step) has gone
+    // away -- see abandonVoiceSession(). Broader than isDismissed, which
+    // only covers the roleplay step's own lifetime; this also cancels a
+    // voice-analysis assembly still running after the user has moved on to
+    // the scorecard (or backed out) before it settled.
+    private var isAbandoned = false
 
     @Published private(set) var isLoadingScenario = true
     @Published private(set) var isSendingTurn = false
@@ -81,36 +106,142 @@ final class LiveLessonViewModel: ObservableObject {
         self.character = customLesson.character
     }
 
-    // Synthesizes the NPC line's voice (Jean) BEFORE appending it to
-    // `messages`, so that by the time the message (and its word-by-word
-    // WordRevealText) becomes visible, the real clip duration is already
-    // known and audio playback starts in the same instant the reveal does --
-    // rather than text appearing first on a guessed pace while audio is
-    // still catching up. A brief "getting voice ready" moment is the correct
-    // trade-off here, not a bug.
+    // Set once the roleplay screen has left the screen (see stopSpeaking()).
+    // Guards presentNPCMessage below against a synthesis call that was
+    // still in flight at that exact moment from starting playback anyway
+    // afterward: Swift's Task cancellation is cooperative, and the Rust FFI
+    // call inside NPCVoiceService.speak() never checks Task.isCancelled, so
+    // leaving mid-synthesis does NOT stop it from running to completion --
+    // and stopSpeaking()'s own NPCVoiceService.stop() only stops a player
+    // that already exists, which one made AFTER the screen closed never
+    // did. Once true, this view model's audio work is permanently done --
+    // a fresh LiveLessonFlowView/LiveLessonViewModel is created per lesson
+    // attempt, so this never needs to reset.
+    private var isDismissed = false
+
+    // Kicked off by prefetchOpeningSpeech() the moment the opening line's
+    // text (and character/voice) are known -- start(), startCustomLesson(),
+    // or applyCached() -- so synthesis runs in the background while the
+    // user is still reading briefing/guide, instead of only starting once
+    // they reach the roleplay screen. See presentPrefetchedOpeningLine().
+    private var openingSpeechTask: Task<NPCVoiceService.Speech?, Never>?
+
+    // Synthesizes the NPC line's voice (in this character's own voice -- see
+    // CharacterAppearance.voiceIndex) BEFORE appending it to `messages`, so
+    // that by the time the message (and its word-by-word WordRevealText)
+    // becomes visible, the real clip duration is already known and audio
+    // playback starts in the same instant the reveal does -- rather than
+    // text appearing first on a guessed pace while audio is still catching
+    // up. A brief "getting voice ready" moment is the correct trade-off
+    // here, not a bug. Used for every turn's reply; the opening line instead
+    // goes through presentPrefetchedOpeningLine() below, which only falls
+    // back to this when no prefetch was kicked off.
     @available(iOS 17.0, *)
     private func presentNPCMessage(_ message: ConversationMessage) async {
+        guard !isAbandoned else { return }
+        do {
+            try voiceSession.appendNPC(id: message.id.uuidString, text: message.text, speakerName: message.characterName)
+        } catch {
+            voiceAnalysisError = error.localizedDescription
+        }
+        // The user is actively recording their own turn -- don't play the
+        // NPC back over the mic, just show the line silently.
+        if suppressNPCPlayback {
+            appendWithoutSpeech(message)
+            return
+        }
         isSynthesizingSpeech = true
         currentSpeechDuration = nil
+        let voice = character?.appearance.voiceIndex ?? CharacterAppearance.char1.voiceIndex
+        let generation = playbackGeneration
         do {
-            let speech = try await NPCVoiceService.shared.speak(message.text)
-            currentSpeechDuration = speech.durationSeconds
-            // Prepare (pre-buffer) playback BEFORE appending the message --
-            // appending is what starts WordRevealText's reveal timer, so
-            // warming up AVAudioPlayer ahead of that moment (rather than
-            // constructing it and calling .play() afterward) tightens the
-            // gap between the reveal starting and audio actually sounding.
-            let prepared = NPCVoiceService.shared.prepare(speech.audioData)
-            messages.append(message)
-            if prepared { NPCVoiceService.shared.playPrepared() }
+            let speech = try await NPCVoiceService.shared.speak(message.text, voice: voice)
+            isSynthesizingSpeech = false
+            guard !isAbandoned else { return }
+            // Suppression kicked in, or this generation was invalidated,
+            // while synthesis was in flight -- show the text, skip playback.
+            if suppressNPCPlayback || playbackGeneration != generation {
+                appendWithoutSpeech(message)
+                return
+            }
+            applySpeech(speech, to: message)
         } catch {
+            isSynthesizingSpeech = false
+            guard !isAbandoned else { return }
             // TTS is additive, not load-bearing -- a failure here should
             // never block the conversation. The message still appears;
             // WordRevealText just falls back to its WPM estimate.
             print("[LiveLessonViewModel] NPC speech synthesis failed, falling back to timed-estimate reveal: \(error)")
-            messages.append(message)
+            appendWithoutSpeech(message)
         }
-        isSynthesizingSpeech = false
+    }
+
+    // Fire-and-forget: starts synthesizing the opening line's audio right
+    // away rather than waiting for the roleplay screen to appear. By the
+    // time the user has actually read through briefing and guide (real
+    // seconds, not something this can shortcut), synthesis -- 2-7+ seconds
+    // measured on-device, worse on a cold model load -- has usually already
+    // finished, so presentPrefetchedOpeningLine() just awaits an
+    // already-done Task instead of starting synthesis from scratch at the
+    // moment the user taps "Let's Practice".
+    @available(iOS 17.0, *)
+    private func prefetchOpeningSpeech(text: String, voice: UInt32) {
+        openingSpeechTask = Task {
+            do {
+                return try await NPCVoiceService.shared.speak(text, voice: voice)
+            } catch {
+                print("[LiveLessonViewModel] Opening-line pre-synthesis failed, will fall back to timed-estimate reveal: \(error)")
+                return nil
+            }
+        }
+    }
+
+    // Call once, from presentOpeningLineIfNeeded(), instead of
+    // presentNPCMessage() directly -- awaits the Task prefetchOpeningSpeech()
+    // already started (typically already finished by now) rather than
+    // kicking off synthesis fresh. Falls back to a live presentNPCMessage()
+    // call if no prefetch is in flight, which covers the mock-data UI-testing
+    // path (loadMockScenario() never calls prefetchOpeningSpeech) and guards
+    // against a future call site that sets pendingOpeningLine without
+    // prefetching.
+    @available(iOS 17.0, *)
+    private func presentPrefetchedOpeningLine(_ message: ConversationMessage) async {
+        guard let task = openingSpeechTask else {
+            await presentNPCMessage(message)
+            return
+        }
+        openingSpeechTask = nil
+        isSynthesizingSpeech = true
+        currentSpeechDuration = nil
+        if let speech = await task.value {
+            isSynthesizingSpeech = false
+            applySpeech(speech, to: message)
+        } else {
+            isSynthesizingSpeech = false
+            appendWithoutSpeech(message)
+        }
+    }
+
+    // Shared tail of both presentation paths above. The user left while
+    // synthesis was in flight -- see isDismissed's doc above. Don't append
+    // (nothing is watching `messages` anymore) and, above all, don't start
+    // playback of a line for a screen that already closed.
+    private func applySpeech(_ speech: NPCVoiceService.Speech, to message: ConversationMessage) {
+        guard !isDismissed else { return }
+        currentSpeechDuration = speech.durationSeconds
+        // Prepare (pre-buffer) playback BEFORE appending the message --
+        // appending is what starts WordRevealText's reveal timer, so
+        // warming up AVAudioPlayer ahead of that moment (rather than
+        // constructing it and calling .play() afterward) tightens the
+        // gap between the reveal starting and audio actually sounding.
+        let prepared = NPCVoiceService.shared.prepare(speech.audioData)
+        messages.append(message)
+        if prepared { NPCVoiceService.shared.playPrepared() }
+    }
+
+    private func appendWithoutSpeech(_ message: ConversationMessage) {
+        guard !isDismissed else { return }
+        messages.append(message)
     }
 
     func start() async {
@@ -165,6 +296,12 @@ final class LiveLessonViewModel: ObservableObject {
             // (synthesized/played/appended) yet -- see presentOpeningLineIfNeeded().
             pendingOpeningLine = ConversationMessage(speaker: .npc, text: opening.openingLine, characterName: opening.character)
             history = [HistoryTurn(role: "npc", text: opening.openingLine, character: opening.character)]
+            // Audio, unlike the text above, starts synthesizing right now --
+            // see prefetchOpeningSpeech's doc.
+            prefetchOpeningSpeech(
+                text: opening.openingLine,
+                voice: character?.appearance.voiceIndex ?? CharacterAppearance.char1.voiceIndex
+            )
         } catch {
             errorMessage = friendlyMessage(for: error)
         }
@@ -186,6 +323,10 @@ final class LiveLessonViewModel: ObservableObject {
             let opening = try await ConversationEngineClient.fetchOpening(lessonRef, scenario: customScenario)
             pendingOpeningLine = ConversationMessage(speaker: .npc, text: opening.openingLine, characterName: opening.character)
             history = [HistoryTurn(role: "npc", text: opening.openingLine, character: opening.character)]
+            prefetchOpeningSpeech(
+                text: opening.openingLine,
+                voice: character?.appearance.voiceIndex ?? CharacterAppearance.char1.voiceIndex
+            )
         } catch {
             errorMessage = friendlyMessage(for: error)
         }
@@ -205,6 +346,13 @@ final class LiveLessonViewModel: ObservableObject {
             characterName: cached.openingCharacterName
         )
         history = [HistoryTurn(role: "npc", text: cached.openingLine, character: cached.openingCharacterName)]
+        // Only the text is cached, not the synthesized audio -- still worth
+        // prefetching here rather than falling through to a live synthesize
+        // at roleplay time, same reasoning as the fresh-fetch path above.
+        prefetchOpeningSpeech(
+            text: cached.openingLine,
+            voice: cached.character.appearance.voiceIndex
+        )
     }
 
     /// Call once, when the roleplay screen itself actually appears. Presents
@@ -217,39 +365,113 @@ final class LiveLessonViewModel: ObservableObject {
         guard !openingLineDidPresent, let opening = pendingOpeningLine else { return }
         openingLineDidPresent = true
         pendingOpeningLine = nil
-        // Deliberate beat so the user actually sees the scene/character
-        // first, rather than being hit with dialogue the instant the
-        // roleplay screen appears. A real `try` (not `try?`) matters here:
+        // Deliberate 2-second beat so the user actually sees the scene/
+        // character first, rather than being hit with dialogue the instant
+        // the roleplay screen appears -- this is now effectively the WHOLE
+        // delay before she starts talking, since prefetchOpeningSpeech()
+        // already started synthesis back in start()/startCustomLesson()/
+        // applyCached(), well before the user tapped through briefing and
+        // guide to get here. A real `try` (not `try?`) matters here:
         // SwiftUI cancels this .task's underlying Task when the roleplay
         // view disappears, which makes Task.sleep throw CancellationError --
         // `try?` was silently swallowing that and falling through to
-        // presentNPCMessage() (and thus playing audio) even after the user
-        // had already left. Letting the throw propagate aborts here instead.
+        // presentPrefetchedOpeningLine() (and thus playing audio) even
+        // after the user had already left. Letting the throw propagate
+        // aborts here instead.
         do {
-            try await Task.sleep(nanoseconds: 1_000_000_000)
+            try await Task.sleep(nanoseconds: 2_000_000_000)
         } catch {
             return
         }
-        await presentNPCMessage(opening)
+        await presentPrefetchedOpeningLine(opening)
     }
 
-    /// Immediately halts any currently-playing NPC speech. Call when the
-    /// roleplay screen disappears -- audio must never keep playing once the
-    /// user has left, regardless of how far into the pipeline (pre-delay,
-    /// synthesis, or active playback) things had gotten. The pre-delay case
-    /// is separately handled by presentOpeningLineIfNeeded()'s cancellation
-    /// above; this covers the case where playback had already started.
+    /// Immediately halts any currently-playing NPC speech, and permanently
+    /// latches isDismissed so a synthesis call already in flight at this
+    /// moment can't start playback later, after the fact. Call when the
+    /// roleplay screen disappears -- audio must never keep playing (or
+    /// start) once the user has left, regardless of how far into the
+    /// pipeline (pre-delay, synthesis, or active playback) things had
+    /// gotten. The pre-delay case is separately handled by
+    /// presentOpeningLineIfNeeded()'s cancellation above; NPCVoiceService's
+    /// own stop() covers playback that had already started; isDismissed
+    /// covers the gap between those two -- synthesis in progress, with
+    /// nothing yet to stop.
     @available(iOS 17.0, *)
     func stopSpeaking() {
+        isDismissed = true
         NPCVoiceService.shared.stop()
     }
 
-    func sendUserResponse(_ text: String) async {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !isSendingTurn, !ended else { return }
-        guard Self.useMockDataForUITesting || scenario != nil else { return }
+    // Toggled around the mic button: true while the user is recording (or
+    // about to), so any in-flight/future NPC playback stays suppressed until
+    // they're done. Also stops any currently-playing NPC line immediately,
+    // same reasoning as stopSpeaking() -- the user talking over the NPC on
+    // purpose is not a case to keep playing through.
+    func setUserRecording(_ recording: Bool) {
+        suppressNPCPlayback = recording
+        if recording { stopSpeaking2() }
+    }
 
-        messages.append(ConversationMessage(speaker: .user, text: trimmed))
+    // Distinct from stopSpeaking(): that one also latches isDismissed
+    // (roleplay screen gone for good). Recording toggles on and off
+    // repeatedly within one still-open roleplay screen, so it needs its own
+    // "stop whatever's playing right now" that doesn't permanently disable
+    // future playback -- just invalidates this one in-flight generation.
+    private func stopSpeaking2() {
+        playbackGeneration = UUID()
+        NPCVoiceService.shared.stop()
+    }
+
+    /// Call when the WHOLE lesson flow is going away (not just the roleplay
+    /// step) -- see isAbandoned's doc. Cancels any voice-analysis work still
+    /// in flight so it can't finish and do anything after the user has left.
+    func abandonVoiceSession() {
+        isAbandoned = true
+        stopSpeaking()
+        voiceFinishTask?.cancel()
+        voiceSession.cancel()
+    }
+
+    // Awaits the conversation-level voice-analysis assembly (bounded by the
+    // analyzer's own cooperative deadline, see the package's docs) and
+    // reduces it to just `coverage` + `aggregates` -- the per-turn evidence
+    // and full word lists are real but far too large for an LLM prompt, and
+    // aren't needed for a holistic delivery judgment. Best-effort throughout:
+    // any failure here (or an accumulated per-turn voiceAnalysisError) just
+    // means no delivery grading this run, never a blocked feedback call --
+    // delivery is additive on top of the existing content grading.
+    private func finishVoiceSessionAndSummarize() async -> [String: Any]? {
+        guard !isAbandoned, voiceAnalysisError == nil else {
+            voiceSession.cancel()
+            return nil
+        }
+        let task = Task { try await voiceSession.finish() }
+        voiceFinishTask = Task { _ = try? await task.value }
+        do {
+            let payload = try await task.value
+            voicePayload = payload.json
+            guard let object = try JSONSerialization.jsonObject(with: payload.json) as? [String: Any] else { return nil }
+            var summary: [String: Any] = [:]
+            if let coverage = object["coverage"] { summary["coverage"] = coverage }
+            if let aggregates = object["aggregates"] { summary["aggregates"] = aggregates }
+            return summary.isEmpty ? nil : summary
+        } catch is CancellationError {
+            return nil
+        } catch {
+            voiceAnalysisError = error.localizedDescription
+            return nil
+        }
+    }
+
+    @discardableResult
+    func sendUserResponse(_ text: String, voiceInput: VoiceTurnInput = .typed) async -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !isSendingTurn, !ended, !isAbandoned else { return false }
+        guard Self.useMockDataForUITesting || scenario != nil else { return false }
+
+        let userMessage = ConversationMessage(speaker: .user, text: trimmed)
+        messages.append(userMessage)
         let historyBeforeThisTurn = history
         history.append(HistoryTurn(role: "user", text: trimmed, character: nil))
         turnNumber += 1
@@ -257,12 +479,17 @@ final class LiveLessonViewModel: ObservableObject {
         errorMessage = nil
 
         if Self.useMockDataForUITesting {
+            do {
+                try voiceSession.appendUser(id: userMessage.id.uuidString, text: trimmed, input: voiceInput)
+            } catch {
+                voiceAnalysisError = error.localizedDescription
+            }
             await mockSendUserResponse()
             isSendingTurn = false
-            return
+            return true
         }
 
-        guard let scenario else { isSendingTurn = false; return }
+        guard let scenario else { isSendingTurn = false; return false }
 
         do {
             let result = try await ConversationEngineClient.fetchTurn(
@@ -274,6 +501,15 @@ final class LiveLessonViewModel: ObservableObject {
                 userResponse: trimmed,
                 conversationToken: conversationToken
             )
+            guard !isAbandoned else { isSendingTurn = false; return false }
+            // Accept the recording only after the text turn succeeds --
+            // a failed send below rolls back the turn entirely, and a voice
+            // clip for a turn that never happened shouldn't count either.
+            do {
+                try voiceSession.appendUser(id: userMessage.id.uuidString, text: trimmed, input: voiceInput)
+            } catch {
+                voiceAnalysisError = error.localizedDescription
+            }
             if let token = result.conversationToken { conversationToken = token }
             if let energy = result.energy { LearnProgressStore.shared.applyServerEnergy(energy) }
             await presentNPCMessage(ConversationMessage(speaker: .npc, text: result.npc_reply, characterName: result.character))
@@ -293,12 +529,16 @@ final class LiveLessonViewModel: ObservableObject {
             if messages.last?.speaker == .user { messages.removeLast() }
             history = historyBeforeThisTurn
             turnNumber -= 1
+            isSendingTurn = false
+            return false
         }
         isSendingTurn = false
+        return true
     }
 
     private func loadFeedback() async {
         guard let scenario, let resolution else { return }
+        let voiceSummary = await finishVoiceSessionAndSummarize()
         do {
             feedback = try await ConversationEngineClient.fetchFeedback(
                 lessonRef,
@@ -308,7 +548,8 @@ final class LiveLessonViewModel: ObservableObject {
                 deductionCount: deductionCount,
                 resolution: resolution,
                 empathyLevels: empathyLevels,
-                conversationToken: conversationToken
+                conversationToken: conversationToken,
+                voiceSummary: voiceSummary
             )
             if let energy = feedback?.energy { LearnProgressStore.shared.applyServerEnergy(energy) }
         } catch {

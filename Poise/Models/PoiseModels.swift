@@ -94,6 +94,12 @@ enum PoiseSkill: String, CaseIterable, Identifiable {
     case clarity
     case empathy
     case resolution
+    // How the user sounded, not what they said -- graded from on-device
+    // acoustic analysis of their recorded turns (pace, pitch range, filler
+    // words), when any turn had usable audio. See AGENTS.md's voice-delivery
+    // exception and LiveLessonViewModel.finishVoiceSessionAndSummarize.
+    // Absent (not a low score) when no turn was recorded aloud.
+    case delivery
 
     var id: String { rawValue }
 
@@ -102,6 +108,7 @@ enum PoiseSkill: String, CaseIterable, Identifiable {
         case .clarity: return "Clarity"
         case .empathy: return "Empathy"
         case .resolution: return "Resolution"
+        case .delivery: return "Delivery"
         }
     }
 
@@ -110,6 +117,7 @@ enum PoiseSkill: String, CaseIterable, Identifiable {
         case .clarity: return "Say what you mean, plainly and specifically."
         case .empathy: return "Make room for how the other person sees it."
         case .resolution: return "Land somewhere concrete before you finish."
+        case .delivery: return "How you sounded saying it: pace, pitch, and filler words."
         }
     }
 
@@ -118,6 +126,7 @@ enum PoiseSkill: String, CaseIterable, Identifiable {
         case .clarity: return "text.alignleft"
         case .empathy: return "heart.fill"
         case .resolution: return "flag.checkered"
+        case .delivery: return "waveform"
         }
     }
 
@@ -126,6 +135,7 @@ enum PoiseSkill: String, CaseIterable, Identifiable {
         case .clarity: return .poiseBlueDark
         case .empathy: return .poisePurple
         case .resolution: return .poiseMintDark
+        case .delivery: return .poiseGold
         }
     }
 }
