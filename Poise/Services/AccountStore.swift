@@ -35,6 +35,14 @@ final class AccountStore: ObservableObject {
         UserDefaults.standard.set(true, forKey: Self.hasShownPromptKey)
     }
 
+    // Debug-only escape hatch (see ProfileView's Testing section) -- lets
+    // the sign-in prompt be replayed without a real uninstall/reinstall.
+    // Only clears the "already shown" flag; doesn't sign the user out, since
+    // shouldShowSignInPrompt already checks isSignedIn separately.
+    func resetSignInPromptShown() {
+        UserDefaults.standard.removeObject(forKey: Self.hasShownPromptKey)
+    }
+
     private init() {
         appleUserID = KeychainStore.read(Self.keychainKey)
         if let appleUserID {

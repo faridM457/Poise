@@ -22,6 +22,7 @@ struct CharacterAnimationView: View {
     }
 
     var mood: Mood = .idleNeutral
+    var characterSet: CharacterAppearance = .char1
     var height: CGFloat = 220
     // When true, renders as an edge-to-edge background (aspect-fill, cropped)
     // instead of the boxed avatar-card presentation -- used by the roleplay
@@ -33,18 +34,83 @@ struct CharacterAnimationView: View {
     // instead of guessing a square/circular crop like the old placeholder.
     private var width: CGFloat { height * (1178.0 / 2556.0) }
 
+    private var resourceName: String { characterSet.resourcePrefix + mood.rawValue }
+
     var body: some View {
         Group {
             if fillScreen {
-                LoopingVideoPlayer(resourceName: mood.rawValue, gravity: .resizeAspectFill)
+                LoopingVideoPlayer(resourceName: resourceName, gravity: .resizeAspectFill)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipped()
             } else {
-                LoopingVideoPlayer(resourceName: mood.rawValue, gravity: .resizeAspect)
+                LoopingVideoPlayer(resourceName: resourceName, gravity: .resizeAspect)
                     .frame(width: width, height: height)
             }
         }
         .accessibilityLabel("Character animation")
+    }
+}
+
+// Which of the app's three bundled character models an NPC renders as
+// (see EngineCharacter.appearance for how a specific NPC resolves to one of
+// these). Char1 is the original, only-ever character -- its clips keep
+// their original unprefixed filenames (Idle_Neutral.mp4, etc.) so the
+// already-shipped bundle references never had to change; Char2/Char3's
+// clips are prefixed on top of the same six mood names.
+enum CharacterAppearance: String, CaseIterable {
+    case char1, char2, char3
+
+    var resourcePrefix: String {
+        switch self {
+        case .char1: return ""
+        case .char2: return "Char2_"
+        case .char3: return "Char3_"
+        }
+    }
+
+    // Asset catalog name for the static "sitting at the desk" landscape
+    // still used on the briefing/guide/scorecard screens in place of the
+    // looping video -- see LiveLessonFlowView's Image("...FullFrame") sites.
+    var stillImageName: String {
+        switch self {
+        case .char1: return "CharFullFrame"
+        case .char2: return "Char2FullFrame"
+        case .char3: return "Char3FullFrame"
+        }
+    }
+
+    // Pocket TTS voice index for this character model (see NPCVoiceService
+    // and PocketTTSModelStaging's voiceNames for the full 8-voice catalog).
+    // Picked from PocketTTSSwift.voices' own name/gender/description
+    // metadata, not guessed: Jean ("gentle male") was already Char1's
+    // voice; Char2 gets Marius ("warm male") -- distinct from Jean but
+    // similarly general-purpose rather than a narrowly-typecast voice like
+    // Javert's "authoritative"; Char3 gets Alba, the one voice Pocket TTS
+    // itself labels "neutral" among the female options, matching why Jean
+    // (not a more typecast voice) was chosen for Char1's do-everything role.
+    var voiceIndex: UInt32 {
+        switch self {
+        case .char1: return 3 // Jean -- gentle male voice
+        case .char2: return 1 // Marius -- warm male voice
+        case .char3: return 0 // Alba -- clear, neutral female voice
+        }
+    }
+}
+
+extension EngineCharacter {
+    // Female characters get the app's one female model (Char3). Male
+    // characters, and any character with no gender info (an older cached
+    // scenario, or a deployed engine server not yet redeployed with the
+    // field), alternate between the two male models by a stable hash of
+    // the name -- so the same character always renders the same way
+    // across replays, rather than every male NPC defaulting to the same
+    // one model the way the app did before Char2/Char3 existed.
+    var appearance: CharacterAppearance {
+        if gender?.lowercased() == "female" {
+            return .char3
+        }
+        let stableHash = name.unicodeScalars.reduce(0) { $0 + Int($1.value) }
+        return stableHash % 2 == 0 ? .char1 : .char2
     }
 }
 
@@ -69,10 +135,12 @@ enum CharacterClipPreloader {
     }
 
     // Warms the clip assets so building the player item isn't a cold file
-    // read. Called as the lesson flow opens.
-    static func preload(_ moods: [CharacterAnimationView.Mood]) {
+    // read. Called as the lesson flow opens, once the NPC's character (and
+    // therefore which of the three models it renders as) is known.
+    static func preload(_ moods: [CharacterAnimationView.Mood], for characterSet: CharacterAppearance) {
         for mood in moods {
-            guard let asset = asset(named: mood.rawValue) else { continue }
+            let name = characterSet.resourcePrefix + mood.rawValue
+            guard let asset = asset(named: name) else { continue }
             Task.detached(priority: .utility) {
                 _ = try? await asset.load(.isPlayable, .tracks)
             }
@@ -112,6 +180,23 @@ final class LoopingPlayerUIView: UIView {
         let layer: AVPlayerLayer
         var endObserver: NSObjectProtocol?
         var readyObserver: NSKeyValueObservation?
+        // Latches true the first time this layer reports ready, and never
+        // resets. isReadyForDisplay itself can transiently flip back to
+        // false on this clip's OWN loop-restart seek (see endObserver
+        // below) even on a clip that has already shown frames fine for a
+        // while -- every loaded clip keeps playing continuously regardless
+        // of visibility, so this happens on schedule to invisible clips
+        // too. Gating applyVisibility() on the live, momentary value was a
+        // real bug: if a mood switch landed in that instant, the
+        // newly-selected clip read as "not ready" even though it had
+        // already displayed frames moments earlier, while the outgoing
+        // clip was simultaneously being hidden -- so NEITHER was visible
+        // for a frame or two, and this view's background is .clear, so
+        // whatever sits behind it (white, in practice) showed through.
+        // The very first time a clip is shown still needs the real
+        // readiness gate (a layer with no frame yet composites black);
+        // this only relaxes the check once a clip has proven it can render.
+        var hasBeenReady = false
 
         init(player: AVQueuePlayer, layer: AVPlayerLayer) {
             self.player = player
@@ -169,7 +254,8 @@ final class LoopingPlayerUIView: UIView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         for (name, clip) in clips {
-            let visible = name == currentResourceName && clip.layer.isReadyForDisplay
+            if clip.layer.isReadyForDisplay { clip.hasBeenReady = true }
+            let visible = name == currentResourceName && clip.hasBeenReady
             clip.layer.opacity = visible ? 1 : 0
         }
         CATransaction.commit()

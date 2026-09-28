@@ -8,11 +8,11 @@
 
 /* Begin PBXBuildFile section */
 		4B7C913047A022AF05CA9874 /* PocketTTS.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3B2A73BD70DC2E85640DA344 /* PocketTTS.xcframework */; };
-		ACC6D817BF86B16CFE007955 /* PocketTTS.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 3B2A73BD70DC2E85640DA344 /* PocketTTS.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		115E043E3058B86300442C82 /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = 115E043D3058B86300442C82 /* RevenueCat */; };
 		115E04403058B86B00442C82 /* RevenueCatUI in Frameworks */ = {isa = PBXBuildFile; productRef = 115E043F3058B86B00442C82 /* RevenueCatUI */; };
 		F0816664C246C754687CC597 /* GoogleMobileAds in Frameworks */ = {isa = PBXBuildFile; productRef = 58FE8F3419777352E0542D74 /* GoogleMobileAds */; };
 		919788DC44434548B07B9630 /* RevenueCatAdMob in Frameworks */ = {isa = PBXBuildFile; productRef = D75EE1A9C9BD4222BD4A3295 /* RevenueCatAdMob */; };
+		D12982403201000000000001 /* PoiseVoiceAnalysis in Frameworks */ = {isa = PBXBuildFile; productRef = D12982403201000000000002 /* PoiseVoiceAnalysis */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -22,7 +22,6 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
-				ACC6D817BF86B16CFE007955 /* PocketTTS.xcframework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -48,6 +47,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				4B7C913047A022AF05CA9874 /* PocketTTS.xcframework in Frameworks */,
+				D12982403201000000000001 /* PoiseVoiceAnalysis in Frameworks */,
 				115E04403058B86B00442C82 /* RevenueCatUI in Frameworks */,
 				F0816664C246C754687CC597 /* GoogleMobileAds in Frameworks */,
 				115E043E3058B86300442C82 /* RevenueCat in Frameworks */,
@@ -112,6 +112,7 @@
 			);
 			name = Poise;
 			packageProductDependencies = (
+				D12982403201000000000002 /* PoiseVoiceAnalysis */,
 				115E043D3058B86300442C82 /* RevenueCat */,
 				115E043F3058B86B00442C82 /* RevenueCatUI */,
 				58FE8F3419777352E0542D74 /* GoogleMobileAds */,
@@ -147,6 +148,7 @@
 			mainGroup = 115E03A63055171A00442C82;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				D12982403201000000000003 /* XCLocalSwiftPackageReference "voice-analysis" */,
 				115E043B3058AFEC00442C82 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */,
 				573234933145F6C2D78136CD /* XCRemoteSwiftPackageReference "swift-package-manager-google-mobile-ads" */,
 				073ED7B34FDA4C3D90FAC2C1 /* XCRemoteSwiftPackageReference "purchases-ios-admob" */,
@@ -439,6 +441,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		D12982403201000000000003 /* XCLocalSwiftPackageReference "voice-analysis" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "voice-analysis";
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		115E043B3058AFEC00442C82 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -467,6 +476,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		D12982403201000000000002 /* PoiseVoiceAnalysis */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D12982403201000000000003 /* XCLocalSwiftPackageReference "voice-analysis" */;
+			productName = PoiseVoiceAnalysis;
+		};
 		115E043D3058B86300442C82 /* RevenueCat */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 115E043B3058AFEC00442C82 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */;

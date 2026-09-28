@@ -7,21 +7,50 @@ import RevenueCat
 // points at localhost, no auth, no production endpoint yet.
 
 struct EngineScenario: Codable, Hashable {
-    let briefing: String
-    let criteria: [String]
+    // `var`, not `let`: the custom-scenario builder lets the user hand-edit
+    // a generated scenario before starting practice (see
+    // CustomScenarioFlowView). Confirmed safe -- this type is never used as
+    // a Set/Dictionary key anywhere.
+    var briefing: String
+    var criteria: [String]
 }
 
-struct EngineLessonSummary: Codable {
+struct EngineLessonSummary: Codable, Hashable {
     let id: String
     let unit: String
-    let title: String
+    // `var`, not `let`, for the same hand-edit reason as EngineScenario above.
+    var title: String
     let isCheckpoint: Bool
-    let character: EngineCharacter
+    var character: EngineCharacter
+    // Only present for a custom scenario (see LessonReference.custom below) --
+    // a built-in lesson's persona notes and criteria live server-side in
+    // lessons.js and never need to round-trip through the client. A custom
+    // lesson isn't in that static list, so the server hands both back once,
+    // at generation time, and the client carries them on every later call.
+    var personaNotes: String? = nil
+    var criteria: [String]? = nil
 }
 
 struct ScenarioResponse: Codable {
     let lesson: EngineLessonSummary
     let scenario: EngineScenario
+}
+
+// Identifies which lesson a request is about: a built-in lesson (looked up
+// server-side by id, same as always) or a custom one generated on the fly
+// from a user's own prompt (see generateCustomScenario below), which isn't
+// in the server's static list, so the client resends the full lesson object
+// on every call instead of just an id.
+enum LessonReference {
+    case builtIn(String)
+    case custom(EngineLessonSummary)
+
+    var lessonId: String {
+        switch self {
+        case .builtIn(let id): return id
+        case .custom(let summary): return summary.id
+        }
+    }
 }
 
 struct RedeemResponse: Codable {
@@ -108,12 +137,18 @@ struct SkillScores: Codable {
     let clarity: SkillScore
     let empathy: SkillScore
     let resolution: SkillScore
+    // Nil whenever no turn in the conversation had usable recorded audio --
+    // absent, not a low score, since there's nothing to grade delivery from.
+    // Optional (with a decode default) so a response from an engine that
+    // doesn't send it yet still decodes.
+    var delivery: SkillScore? = nil
 
-    subscript(skill: PoiseSkill) -> SkillScore {
+    subscript(skill: PoiseSkill) -> SkillScore? {
         switch skill {
         case .clarity: return clarity
         case .empathy: return empathy
         case .resolution: return resolution
+        case .delivery: return delivery
         }
     }
 }
@@ -134,11 +169,16 @@ struct FeedbackResponse: Codable {
     // because inventing an explanation would be worse than showing none.
     var skillLevels: [PoiseSkill: SkillLevel] {
         if let skills {
-            return [
+            var levels: [PoiseSkill: SkillLevel] = [
                 .clarity: skills.clarity.skillLevel,
                 .empathy: skills.empathy.skillLevel,
                 .resolution: skills.resolution.skillLevel,
             ]
+            // Absent, not defaulted -- see SkillScores.delivery's doc. A
+            // missing key here (not a synthesized level) is what tells
+            // SkillScoreCard to leave the chip off entirely.
+            if let delivery = skills.delivery { levels[.delivery] = delivery.skillLevel }
+            return levels
         }
         return [.clarity: clarityLevel, .empathy: empathyLevel, .resolution: resolutionLevel]
     }
@@ -151,7 +191,7 @@ struct FeedbackResponse: Codable {
     // two criteria the screen deliberately withholds. Better to show the
     // level alone than to imply an explanation that isn't there.
     func note(for skill: PoiseSkill) -> String? {
-        skills?[skill].note
+        skills?[skill]?.note
     }
 
     // Coarse levels are still derivable from signals the engine returns even
@@ -247,15 +287,23 @@ enum ConversationEngineClient {
         try await post("api/redeem", body: ["code": code])
     }
 
-    static func fetchOpening(lessonId: String, scenario: EngineScenario) async throws -> OpeningResponse {
-        try await post("api/opening", body: [
-            "lessonId": lessonId,
+    // Designs a one-off lesson + first scenario from the user's own
+    // plain-language prompt (Poise Pro's custom-scenario builder). The
+    // returned lesson isn't in the server's static list -- callers carry it
+    // forward via LessonReference.custom on every later opening/turn/
+    // feedback call for this conversation.
+    static func generateCustomScenario(prompt: String) async throws -> ScenarioResponse {
+        try await post("api/custom-scenario", body: ["prompt": prompt])
+    }
+
+    static func fetchOpening(_ lesson: LessonReference, scenario: EngineScenario) async throws -> OpeningResponse {
+        try await post("api/opening", body: lessonPayload(lesson).merging([
             "scenario": scenarioPayload(scenario),
-        ])
+        ]) { _, new in new })
     }
 
     static func fetchTurn(
-        lessonId: String,
+        _ lesson: LessonReference,
         scenario: EngineScenario,
         history: [HistoryTurn],
         metCriteria: [String],
@@ -263,35 +311,62 @@ enum ConversationEngineClient {
         userResponse: String,
         conversationToken: String?
     ) async throws -> TurnResponse {
-        try await post("api/turn", body: [
-            "lessonId": lessonId,
+        try await post("api/turn", body: lessonPayload(lesson).merging([
             "scenario": scenarioPayload(scenario),
             "history": history.map(historyPayload),
             "metCriteria": metCriteria,
             "turnNumber": turnNumber,
             "userResponse": userResponse,
-        ], conversationToken: conversationToken)
+        ]) { _, new in new }, conversationToken: conversationToken)
     }
 
     static func fetchFeedback(
-        lessonId: String,
+        _ lesson: LessonReference,
         scenario: EngineScenario,
         history: [HistoryTurn],
         metCriteria: [String],
         deductionCount: Int,
         resolution: String,
         empathyLevels: [String],
-        conversationToken: String?
+        conversationToken: String?,
+        // Reduced on-device voice-analysis output (coverage + aggregates
+        // only -- see LiveLessonViewModel.finishVoiceSessionAndSummarize).
+        // Nil whenever no user turn had usable audio, analysis failed, or
+        // the feature is unavailable; delivery grading is additive, never
+        // required for feedback to work.
+        voiceSummary: [String: Any]? = nil
     ) async throws -> FeedbackResponse {
-        try await post("api/feedback", body: [
-            "lessonId": lessonId,
+        var body = lessonPayload(lesson).merging([
             "scenario": scenarioPayload(scenario),
             "history": history.map(historyPayload),
             "metCriteria": metCriteria,
             "deductionCount": deductionCount,
             "resolution": resolution,
             "empathyLevels": empathyLevels,
-        ], conversationToken: conversationToken)
+        ]) { _, new in new }
+        if let voiceSummary { body["voiceSummary"] = voiceSummary }
+        return try await post("api/feedback", body: body, conversationToken: conversationToken)
+    }
+
+    // Built-in lessons send just an id, looked up server-side. A custom
+    // lesson isn't in that static list, so its full shape rides along
+    // instead -- matching isValidCustomLesson's expectations in index.js.
+    private static func lessonPayload(_ lesson: LessonReference) -> [String: Any] {
+        switch lesson {
+        case .builtIn(let id):
+            return ["lessonId": id]
+        case .custom(let summary):
+            var character: [String: Any] = ["name": summary.character.name, "role": summary.character.role]
+            if let relationship = summary.character.relationship { character["relationship"] = relationship }
+            if let gender = summary.character.gender { character["gender"] = gender }
+            return ["lesson": [
+                "id": summary.id,
+                "title": summary.title,
+                "personaNotes": summary.personaNotes ?? "",
+                "criteria": summary.criteria ?? [],
+                "character": character,
+            ]]
+        }
     }
 
     private static func scenarioPayload(_ scenario: EngineScenario) -> [String: Any] {

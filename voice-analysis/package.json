@@ -1,0 +1,25 @@
+{
+  "name": "poise-voice-analysis",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Standalone, local voice analysis for recorded Poise turns",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "exports": "./src/index.js",
+  "scripts": {
+    "build:device": "node scripts/build-device.js",
+    "test": "node --test test/*.test.js",
+    "analyze": "node src/cli.js",
+    "analyze:apple": "node src/apple-cli.js",
+    "evaluate": "node scripts/evaluate.js"
+  },
+  "dependencies": {
+    "pitchy": "4.1.0",
+    "wavefile": "11.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

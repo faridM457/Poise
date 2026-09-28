@@ -70,6 +70,7 @@ export const lessons = [
     difficultyLabel: "cooperative",
     character: {
       name: "Dani",
+      gender: "female",
       role: "New report",
       relationship: "Joined the user's team last week; was a peer until a reorg",
     },
@@ -97,6 +98,7 @@ export const lessons = [
     difficultyLabel: "cooperative",
     character: {
       name: "Priya",
+      gender: "female",
       role: "Direct report",
       relationship: "5 months on the team, reports to the user",
     },
@@ -122,6 +124,7 @@ export const lessons = [
     difficultyLabel: "assertive",
     character: {
       name: "Theo",
+      gender: "male",
       role: "Direct report",
       relationship: "3 months on the team, senior hire, reports to the user",
     },
@@ -149,6 +152,7 @@ export const lessons = [
     difficultyLabel: "guarded",
     character: {
       name: "Nadia",
+      gender: "female",
       role: "Direct report",
       relationship: "1 year on the team, reports to the user",
     },
@@ -175,6 +179,7 @@ export const lessons = [
     difficultyLabel: "assertive",
     character: {
       name: "Owen",
+      gender: "male",
       role: "Direct report",
       relationship: "4 months on the team, reports to the user",
     },
@@ -203,6 +208,7 @@ export const lessons = [
     difficultyLabel: "cooperative",
     character: {
       name: "Sam",
+      gender: "male",
       role: "Direct report",
       relationship: "6 months on the team, reports to the user",
     },
@@ -229,6 +235,7 @@ export const lessons = [
     difficultyLabel: "assertive",
     character: {
       name: "Margaret",
+      gender: "female",
       role: "Direct report",
       relationship: "12 years in the field, 2 years on the team, reports to the user",
     },
@@ -254,6 +261,7 @@ export const lessons = [
     difficultyLabel: "guarded",
     character: {
       name: "Jonah",
+      gender: "male",
       role: "Direct report",
       relationship: "8 months on the team, reports to the user",
     },
@@ -280,6 +288,7 @@ export const lessons = [
     difficultyLabel: "resistant",
     character: {
       name: "Alex",
+      gender: "female",
       role: "Direct report",
       relationship: "1 year on the team, reports to the user",
     },
@@ -306,6 +315,7 @@ export const lessons = [
     difficultyLabel: "resistant",
     character: {
       name: "Reese",
+      gender: "female",
       role: "Direct report",
       relationship: "1 year on the team, reports to the user",
     },
@@ -335,6 +345,7 @@ export const lessons = [
     difficultyLabel: "guarded",
     character: {
       name: "Cass",
+      gender: "female",
       role: "Direct report",
       relationship: "2 years on the team, reports to the user",
     },
@@ -360,6 +371,7 @@ export const lessons = [
     difficultyLabel: "assertive",
     character: {
       name: "Martin",
+      gender: "male",
       role: "Peer manager",
       relationship: "Runs an adjacent team; does not report to the user",
     },
@@ -386,6 +398,7 @@ export const lessons = [
     difficultyLabel: "assertive",
     character: {
       name: "Diane",
+      gender: "female",
       role: "The user's manager",
       relationship: "The user's direct manager; the deadline may not be hers to move",
     },
@@ -411,6 +424,7 @@ export const lessons = [
     difficultyLabel: "guarded",
     character: {
       name: "Joel",
+      gender: "male",
       role: "Direct report",
       relationship: "Was the user's peer for 3 years; has reported to them for 2 months",
     },
@@ -436,6 +450,7 @@ export const lessons = [
     difficultyLabel: "resistant",
     character: {
       name: "Devon",
+      gender: "male",
       role: "Direct report",
       relationship: "Was the user's peer for 4 years; has reported to them for 3 months",
     },
@@ -464,6 +479,7 @@ export const lessons = [
     difficultyLabel: "assertive",
     character: {
       name: "Diane",
+      gender: "female",
       role: "The user's manager",
       relationship: "The user's direct manager; controls the budget",
     },
@@ -489,6 +505,7 @@ export const lessons = [
     difficultyLabel: "assertive",
     character: {
       name: "Karim",
+      gender: "male",
       role: "Peer manager",
       relationship: "Runs an adjacent team; presenting to a room the user is also in",
     },
@@ -515,6 +532,7 @@ export const lessons = [
     difficultyLabel: "resistant",
     character: {
       name: "Ellis",
+      gender: "male",
       role: "Leadership",
       relationship: "Senior leader in a review with others present",
     },
@@ -540,6 +558,7 @@ export const lessons = [
     difficultyLabel: "resistant",
     character: {
       name: "Ellis",
+      gender: "male",
       role: "Leadership",
       relationship: "Senior leader; frustrated about a missed commitment",
     },
@@ -565,6 +584,7 @@ export const lessons = [
     difficultyLabel: "resistant",
     character: {
       name: "Karim",
+      gender: "male",
       role: "Peer manager",
       relationship: "Adjacent team lead, challenging the user with leadership present",
     },
@@ -594,6 +614,7 @@ export const lessons = [
     difficultyLabel: "assertive",
     character: {
       name: "Imani",
+      gender: "female",
       role: "Candidate",
       relationship: "Final-round candidate weighing a competing offer",
     },
@@ -619,6 +640,7 @@ export const lessons = [
     difficultyLabel: "guarded",
     character: {
       name: "Peter",
+      gender: "male",
       role: "Candidate",
       relationship: "Final-round candidate; a genuine contender",
     },
@@ -644,6 +666,7 @@ export const lessons = [
     difficultyLabel: "guarded",
     character: {
       name: "Jonah",
+      gender: "male",
       role: "Direct report",
       relationship: "Documented pattern; informal feedback has already been tried",
     },
@@ -669,6 +692,7 @@ export const lessons = [
     difficultyLabel: "resistant",
     character: {
       name: "Ines & Marco",
+      gender: "female",
       role: "Two reports",
       relationship: "Both report to the user; both present in the room",
     },
@@ -695,6 +719,7 @@ export const lessons = [
     difficultyLabel: "guarded",
     character: {
       name: "Cass",
+      gender: "female",
       role: "Direct report",
       relationship: "2 years on the team; this is their final conversation with the user",
     },
@@ -720,6 +745,7 @@ export const lessons = [
     difficultyLabel: "resistant",
     character: {
       name: "Reese",
+      gender: "female",
       role: "Direct report",
       relationship: "At the end of a documented performance process",
     },

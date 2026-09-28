@@ -1,0 +1,8 @@
+{
+  "conversationId": "practice-example",
+  "totalAcceptedTurnCount": 2,
+  "turns": [
+    { "id": "turn-1", "file": "../recordings/turn-1.wav" },
+    { "id": "turn-2", "file": "../recordings/turn-2.caf", "interrupted": false }
+  ]
+}

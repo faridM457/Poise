@@ -38,8 +38,24 @@ enum ScenarioCache {
         UserDefaults.standard.set(data, forKey: key)
     }
 
+    // A scenario cached before EngineCharacter.gender existed decodes fine
+    // (it's a plain Optional -- a missing JSON key just becomes nil), but
+    // that nil then sticks around forever: this cache only clears on
+    // completion, and a lesson someone merely opened once, long before
+    // this field shipped, would otherwise keep showing the wrong character
+    // model indefinitely (falling back to the name-hash alternation --
+    // which is how "Priya" ended up on the male model once, in exactly
+    // this situation). Treat a missing gender as staleness, not a real
+    // "no gender" case: every lesson has one now, so nil can only mean
+    // "cached before this field existed" -- invalidate and let the next
+    // open regenerate for real, which fixes it permanently for that lesson.
     static func scenario(for lessonID: String) -> CachedScenario? {
-        load()[lessonID]
+        guard let cached = load()[lessonID] else { return nil }
+        guard cached.character.gender != nil else {
+            invalidate(lessonID: lessonID)
+            return nil
+        }
+        return cached
     }
 
     static func store(_ cached: CachedScenario, for lessonID: String) {

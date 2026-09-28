@@ -53,6 +53,20 @@ struct LiveLessonFlowView: View {
         _viewModel = StateObject(wrappedValue: LiveLessonViewModel(lessonId: engineLessonId))
     }
 
+    // For a scenario generated from the user's own prompt (Poise Pro's
+    // custom-scenario builder, see CustomScenarioFlowView) -- the lesson and
+    // its first scenario already exist by the time this view is reached, so
+    // this skips straight to LiveLessonViewModel's custom-lesson init rather
+    // than a by-id lookup. Never a checkpoint: checkpoints are curriculum
+    // structure, and a custom scenario has none.
+    init(customLesson: EngineLessonSummary, scenario: EngineScenario, onFinish: @escaping (Bool) -> Void) {
+        self.engineLessonId = customLesson.id
+        self.title = customLesson.title
+        self.isCheckpoint = false
+        self.onFinish = onFinish
+        _viewModel = StateObject(wrappedValue: LiveLessonViewModel(customLesson: customLesson, scenario: scenario))
+    }
+
     var body: some View {
         ZStack {
             // Mounted once for the life of the flow rather than inside the
@@ -68,17 +82,32 @@ struct LiveLessonFlowView: View {
             // still whose colour could not be matched to the video pipeline --
             // was treating the symptom. With the layer already playing, there
             // is no window to cover.
-            CharacterAnimationView(mood: characterMood, fillScreen: true)
+            // Which of the app's three character models this renders as
+            // isn't known until viewModel.character resolves (after
+            // start() below) -- until then this defaults to .char1, but
+            // that's invisible either way, since `content` (the loading
+            // view, then briefing/guide) draws opaquely over this layer
+            // the whole time. By the moment the roleplay step actually
+            // uncovers it, character has long since resolved and the
+            // preload below has had the whole briefing+guide screens to
+            // warm the *correct* clip, not just char1's.
+            CharacterAnimationView(mood: characterMood, characterSet: viewModel.character?.appearance ?? .char1, fillScreen: true)
                 .ignoresSafeArea()
 
             content
         }
         .task {
-            // Warm the clip assets as early as possible; the view above turns
-            // that into an already-decoding layer.
-            CharacterClipPreloader.preload([.idleNeutral, .talkNeutral])
             await viewModel.start()
+            // Warm the clip assets as early as possible now that the
+            // character (and therefore which model to warm) is known; the
+            // view above turns that into an already-decoding layer.
+            CharacterClipPreloader.preload([.idleNeutral, .talkNeutral], for: viewModel.character?.appearance ?? .char1)
         }
+        // Fires when the WHOLE flow closes, on any step -- broader than
+        // LiveRoleplayView's own stopSpeaking() (roleplay step only). Cancels
+        // any voice-analysis assembly still in flight so it can't finish and
+        // populate voicePayload after the user has already left.
+        .onDisappear { viewModel.abandonVoiceSession() }
     }
 
     private var content: some View {
@@ -293,16 +322,28 @@ private struct LiveBriefingView: View {
                     // not the looping clip. Those are all 1178x2556 portrait,
                     // so at 210pt tall the animation rendered as a ~97pt
                     // vertical strip floating in the middle of a ~354pt-wide
-                    // panel, with flat teal either side. CharFullFrame is
-                    // 1.684:1 against this panel's 1.61:1, so it fills the
-                    // frame with almost no cropping, and matches the framing
-                    // the Learn hero already uses for the same character.
-                    Image("CharFullFrame")
-                        .resizable()
-                        .scaledToFill()
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 220)
-                        .clipped()
+                    // panel, with flat teal either side.
+                    //
+                    // GeometryReader + an explicit .frame(width:height:) on
+                    // the image itself, not .frame(maxWidth: .infinity) --
+                    // .scaledToFill() combined with an *unbounded* maxWidth
+                    // lets the image propose an oversized ideal width when
+                    // its own aspect ratio is far from this panel's (~1.6:1
+                    // at typical device widths), and that oversized
+                    // proposal leaks up through the ZStack into the whole
+                    // screen's layout, clipping the header on both edges.
+                    // CharFullFrame (1.684:1) happened to be close enough to
+                    // never expose this; Char3FullFrame's real 2:1 source
+                    // render did. Binding both dimensions explicitly avoids
+                    // it regardless of the source image's own aspect ratio.
+                    GeometryReader { geo in
+                        Image(viewModel.character?.appearance.stillImageName ?? "CharFullFrame")
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: geo.size.width, height: 220)
+                            .clipped()
+                    }
+                    .frame(height: 220)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(viewModel.character?.name ?? "...")
                             .font(PoiseType.caption(.heavy))
@@ -323,7 +364,8 @@ private struct LiveBriefingView: View {
                     .foregroundStyle(Color.poiseMuted)
                     .lineSpacing(5)
             }
-            .padding(24)
+            .padding(.horizontal, PoiseLayout.readingMargin)
+            .padding(.vertical, 24)
         }
         .safeAreaInset(edge: .bottom) {
             Button(action: onContinue) {
@@ -368,7 +410,14 @@ private struct LiveGuideView: View {
                             if index > 0 {
                                 PoiseDivider().padding(.leading, 68)
                             }
-                            HStack(alignment: .top, spacing: 14) {
+                            // .center, not .top -- with a fixed 38pt badge,
+                            // .top left a one-line criterion sitting at the
+                            // top of the row (since the badge, not the text,
+                            // was setting the row's height) instead of
+                            // centered against the badge. Two-line criteria
+                            // are close enough to 38pt tall that this makes
+                            // no visible difference for them.
+                            HStack(alignment: .center, spacing: 14) {
                                 ZStack {
                                     RoundedRectangle(cornerRadius: 38 * 0.3, style: .continuous)
                                         .fill(Color.poiseBlue.opacity(0.13))
@@ -390,7 +439,8 @@ private struct LiveGuideView: View {
                     }
                 }
             }
-            .padding(24)
+            .padding(.horizontal, PoiseLayout.readingMargin)
+            .padding(.vertical, 24)
         }
         .safeAreaInset(edge: .bottom) {
             Button(action: onContinue) {
@@ -470,7 +520,8 @@ private struct LiveCheckpointGuideView: View {
                     }
                 }
             }
-            .padding(24)
+            .padding(.horizontal, PoiseLayout.readingMargin)
+            .padding(.vertical, 24)
         }
         .safeAreaInset(edge: .bottom) {
             Button(action: onContinue) {
@@ -521,6 +572,27 @@ private struct LiveRoleplayView: View {
     @State private var response = ""
     @FocusState private var isWriting: Bool
     @StateObject private var speech = SpeechRecognitionService()
+    // True from the moment Send is tapped until sendUserResponse settles --
+    // covers the gap between tapping and speech.finalizedInput() actually
+    // resolving, which composerLocked's other flags don't (isSendingTurn
+    // only flips true once the network call itself starts).
+    @State private var isSubmitting = false
+    // Set only once the FINAL npc_reply has finished its word-by-word
+    // reveal (and, by extension, finished playing) -- see the onReview
+    // transition below for why this exists instead of reacting to
+    // viewModel.ended directly.
+    @State private var finalMessageRevealed = false
+    @State private var showTranscript = false
+    // True by default (not false) -- covers the window between this screen
+    // appearing and the opening line's reveal actually starting (the
+    // deliberate pre-dialogue delay plus voice synthesis time in
+    // presentOpeningLineIfNeeded), during which viewModel.isSendingTurn is
+    // never true (that flag only ever covers sendUserResponse's own round
+    // trip) and viewModel.messages is still empty, so nothing else was
+    // blocking the composer. Flips true again on every later reveal too --
+    // see composerLocked below for why sending mid-reply must not be
+    // allowed.
+    @State private var npcIsSpeaking = true
 
     // Measured directly from an extracted frame of Idle_Neutral.mp4 (frame
     // 30, via ffmpeg) -- not a guess. Face occupies roughly 27%-51% of frame
@@ -611,8 +683,21 @@ private struct LiveRoleplayView: View {
             // ever started).
             viewModel.stopSpeaking()
         }
-        .onChange(of: viewModel.ended) { _, ended in
-            if ended { onReview() }
+        // Deliberately NOT keyed off viewModel.ended directly -- that flips
+        // true the instant sendUserResponse's network call returns, which is
+        // BEFORE the final npc_reply has even started its word-by-word
+        // reveal (let alone finished being read or spoken). Reacting to it
+        // immediately cut straight to the scorecard mid-line. Instead this
+        // waits for the reveal to actually finish (finalMessageRevealed,
+        // set from bottomDialoguePanel's onRevealComplete below), then adds
+        // one more deliberate beat so the user has time to actually read the
+        // NPC's last line before the screen changes out from under it.
+        .onChange(of: finalMessageRevealed) { _, revealed in
+            guard revealed else { return }
+            Task {
+                try? await Task.sleep(nanoseconds: 2_200_000_000)
+                onReview()
+            }
         }
     }
 
@@ -620,15 +705,45 @@ private struct LiveRoleplayView: View {
     // panel's height is always just "one short message + a compact input
     // row" -- small and predictable, instead of growing with conversation
     // length and risking covering more of the scene the longer you talk.
+    // Past lines are still reachable, just not inline: the small button
+    // below opens the full transcript in a sheet on demand instead.
     private var bottomDialoguePanel: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if viewModel.messages.count > 1 {
+                HStack {
+                    Spacer()
+                    Button {
+                        showTranscript = true
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "clock.arrow.circlepath")
+                            Text("View past dialogue")
+                        }
+                        .font(PoiseType.caption(.semibold))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(.black.opacity(0.3))
+                        .clipShape(Capsule())
+                    }
+                    .accessibilityLabel("View past dialogue")
+                }
+            }
+
             if let latest = viewModel.messages.last {
                 MessageBubble(
                     message: latest,
                     animateReveal: latest.speaker != .user,
                     speechDuration: viewModel.currentSpeechDuration,
-                    onRevealStart: { characterMood = .talkNeutral },
-                    onRevealComplete: { characterMood = .idleNeutral }
+                    onRevealStart: {
+                        characterMood = .talkNeutral
+                        npcIsSpeaking = true
+                    },
+                    onRevealComplete: {
+                        characterMood = .idleNeutral
+                        npcIsSpeaking = false
+                        if viewModel.ended { finalMessageRevealed = true }
+                    }
                 )
             }
 
@@ -662,14 +777,20 @@ private struct LiveRoleplayView: View {
                     .background(.white)
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .focused($isWriting)
-                    .disabled(viewModel.isSendingTurn)
+                    .disabled(composerLocked)
                     .accessibilityLabel("Typed response")
 
                 // Fills the text field as the user speaks, live -- never
                 // sends automatically. The user reviews/edits before tapping
                 // send, same non-destructive pattern as the browser mic
-                // button in conversation-engine.
-                Button(action: speech.toggleListening) {
+                // button in conversation-engine. Also suppresses NPC
+                // playback for the duration (setUserRecording) so the mic
+                // doesn't pick up the NPC's own voice over the speaker.
+                Button {
+                    viewModel.setUserRecording(true)
+                    speech.toggleListening()
+                    viewModel.setUserRecording(speech.isCapturing)
+                } label: {
                     Image(systemName: speech.isListening ? "mic.fill" : "mic")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(speech.isListening ? .white : .white.opacity(0.85))
@@ -677,7 +798,7 @@ private struct LiveRoleplayView: View {
                         .background(speech.isListening ? Color.red.opacity(0.85) : .white.opacity(0.18))
                         .clipShape(Circle())
                 }
-                .disabled(viewModel.isSendingTurn)
+                .disabled(composerLocked || speech.isFinalizing)
                 .accessibilityLabel(speech.isListening ? "Stop dictating" : "Speak your response")
 
                 Button(action: sendResponse) {
@@ -690,10 +811,20 @@ private struct LiveRoleplayView: View {
             }
         }
         .onChange(of: speech.transcript) { _, newValue in
-            guard !newValue.isEmpty else { return }
+            guard !isSubmitting, !newValue.isEmpty else { return }
             response = newValue
         }
-        .onDisappear { speech.stopListening() }
+        .onChange(of: speech.isListening) { _, listening in
+            if listening { response = "" }
+        }
+        .onChange(of: speech.isCapturing) { _, recording in viewModel.setUserRecording(recording) }
+        .onDisappear {
+            speech.discardDraft()
+            viewModel.setUserRecording(false)
+        }
+        .sheet(isPresented: $showTranscript) {
+            ConversationTranscriptSheet(messages: viewModel.messages, characterName: viewModel.character?.name)
+        }
         .padding(.horizontal, 20)
         .padding(.top, 20)
         // Safe area (home-indicator clearance) is respected here, not
@@ -711,15 +842,78 @@ private struct LiveRoleplayView: View {
         .padding(.bottom, 8)
     }
 
+    // Locked for the whole time the NPC is "talking" -- voice synthesis,
+    // audio playback, and the word-by-word reveal all read as one
+    // uninterruptible turn from the user's side. Without this, the composer
+    // was only ever disabled by isSendingTurn, which covers the network
+    // round trip but not synthesis (isSynthesizingSpeech) or the reveal
+    // itself (npcIsSpeaking) -- both real windows where a fast typist could
+    // otherwise send a reply the NPC hadn't finished delivering yet, talking
+    // over them mid-sentence.
+    private var composerLocked: Bool {
+        viewModel.isSendingTurn || viewModel.isSynthesizingSpeech || npcIsSpeaking || isSubmitting
+    }
+
     private var sendDisabled: Bool {
-        response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isSendingTurn
+        response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || composerLocked || speech.isStarting
     }
 
     private func sendResponse() {
         let trimmed = response
-        response = ""
+        isSubmitting = true
         isWriting = false
-        Task { await viewModel.sendUserResponse(trimmed) }
+        Task {
+            // Seals whatever recording was in progress (or already
+            // finished) into a VoiceTurnInput -- .typed if none was ever
+            // started. Awaiting this also naturally stops any active
+            // dictation, so the mic can't keep listening into the next turn.
+            let input = await speech.finalizedInput()
+            viewModel.setUserRecording(false)
+            if await viewModel.sendUserResponse(trimmed, voiceInput: input) {
+                response = ""
+                speech.discardDraft()
+            }
+            isSubmitting = false
+        }
+    }
+}
+
+// The on-demand full history that bottomDialoguePanel's "View past dialogue"
+// button opens. Every past line at once, statically (no word reveal -- these
+// were already read/heard live), so this is just a plain scroll-back, not a
+// second live conversation surface.
+private struct ConversationTranscriptSheet: View {
+    let messages: [ConversationMessage]
+    let characterName: String?
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 12) {
+                        ForEach(messages) { message in
+                            MessageBubble(message: message)
+                                .id(message.id)
+                        }
+                    }
+                    .padding(20)
+                }
+                .background(Color.poiseCanvas)
+                .onAppear {
+                    if let lastId = messages.last?.id {
+                        proxy.scrollTo(lastId, anchor: .bottom)
+                    }
+                }
+            }
+            .navigationTitle(characterName.map { "Conversation with \($0)" } ?? "Conversation so far")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
     }
 }
 
@@ -734,13 +928,19 @@ private struct LiveScorecardView: View {
                 // Landscape still in a panel, matching the briefing screen --
                 // the looping clips are all portrait, so at 150pt tall this
                 // rendered as a ~69pt vertical strip floating in the middle.
-                Image("CharFullFrame")
-                    .resizable()
-                    .scaledToFill()
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 150)
-                    .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                // GeometryReader + explicit width -- see the briefing
+                // screen's identical fix for why .frame(maxWidth: .infinity)
+                // isn't safe here regardless of the source image's aspect
+                // ratio.
+                GeometryReader { geo in
+                    Image(viewModel.character?.appearance.stillImageName ?? "CharFullFrame")
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geo.size.width, height: 150)
+                        .clipped()
+                }
+                .frame(height: 150)
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
 
                 if let feedback = viewModel.feedback {
                     VStack(spacing: 10) {
@@ -770,10 +970,14 @@ private struct LiveScorecardView: View {
                             // Same treatment as the per-skill notes above --
                             // both are supporting explanation, so they should
                             // read as the same kind of text rather than the
-                            // feedback being a second, larger voice.
+                            // feedback being a second, larger voice. That
+                            // means matching poiseMuted too, not just the
+                            // font: navy next to the categories' muted notes
+                            // read as a heavier, second voice despite being
+                            // the same point size.
                             Text(feedback.feedbackLine)
                                 .font(PoiseType.caption())
-                                .foregroundStyle(Color.poiseNavy)
+                                .foregroundStyle(Color.poiseMuted)
                                 .lineSpacing(3)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -791,7 +995,8 @@ private struct LiveScorecardView: View {
                         .foregroundStyle(Color.poiseMuted)
                 }
             }
-            .padding(24)
+            .padding(.horizontal, PoiseLayout.readingMargin)
+            .padding(.vertical, 24)
         }
         .safeAreaInset(edge: .bottom) {
             Button(action: onContinue) {
@@ -819,11 +1024,20 @@ private struct LiveScorecardView: View {
 private struct SkillScoreCard: View {
     let feedback: FeedbackResponse
 
+    // Delivery is additive, not guaranteed -- only shown when the
+    // conversation actually had a graded delivery score (i.e. at least one
+    // turn had usable recorded audio). The original three are always graded.
+    private var shownSkills: [PoiseSkill] {
+        var skills: [PoiseSkill] = [.clarity, .empathy, .resolution]
+        if feedback.skillLevels[.delivery] != nil { skills.append(.delivery) }
+        return skills
+    }
+
     var body: some View {
         PoiseSection(title: "How it went") {
             PoiseSurfaceCard(padding: 0) {
                 VStack(spacing: 0) {
-                    ForEach(Array(PoiseSkill.allCases.enumerated()), id: \.element.id) { index, skill in
+                    ForEach(Array(shownSkills.enumerated()), id: \.element.id) { index, skill in
                         if index > 0 {
                             PoiseDivider().padding(.leading, 68)
                         }
@@ -925,7 +1139,11 @@ private struct ChecklistResultRow: View {
     private var tint: Color { item.met ? .poiseMintDark : .poiseGold }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
+        // .center, not .top -- see the guide screen's identical fix (same
+        // fixed-size-badge-next-to-variable-line-text shape): with .top, a
+        // one-line criterion sat at the top of the row instead of centered
+        // against the badge and the pill.
+        HStack(alignment: .center, spacing: 14) {
             ZStack {
                 RoundedRectangle(cornerRadius: 38 * 0.3, style: .continuous)
                     .fill(tint.opacity(0.13))

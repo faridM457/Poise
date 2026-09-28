@@ -76,9 +76,14 @@ export function verifyToken(token, userId, lessonId, now = Date.now()) {
   return null;
 }
 
-// Middleware factory: the routes that continue a paid conversation.
+// Middleware factory: the routes that continue a paid conversation. A
+// custom scenario (see index.js resolveLesson) has no lessonId -- the
+// client sends the full lesson object instead, and the token was issued
+// against *its* id -- so this has to check both places, or every custom
+// scenario's feedback call would fail token verification.
 export function requireConversation(req, res, next) {
-  const reason = verifyToken(req.get("X-Poise-Conversation"), req.poiseUser, req.body?.lessonId);
+  const lessonId = req.body?.lessonId ?? req.body?.lesson?.id;
+  const reason = verifyToken(req.get("X-Poise-Conversation"), req.poiseUser, lessonId);
   if (reason) {
     return res.status(401).json({ error: `Conversation token ${reason}. Start the conversation again.` });
   }

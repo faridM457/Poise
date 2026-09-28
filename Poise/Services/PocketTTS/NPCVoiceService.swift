@@ -3,10 +3,11 @@ import Foundation
 
 // Synthesizes NPC dialogue on-device via Pocket TTS (kyutai-labs, ported
 // from the working PocketTTSDemo harness built earlier this session) and
-// plays it back. Jean is the only voice wired in for this first pass -- of
-// Pocket TTS's built-in voices, it's the one Kyutai's own catalog officially
-// labels "conversation" rather than "reading" (see project notes), and it's
-// the only one whose embedding is bundled here.
+// plays it back. Each of the app's three character models (see
+// CharacterAppearance) speaks in its own voice -- Jean, Marius, and Alba --
+// picked from Pocket TTS's own 8-voice catalog by calling
+// PocketTTSSwift.voices at runtime and reading its name/gender/description
+// metadata, not guessed from the (Les Misérables-derived) file names alone.
 // Not ObservableObject -- nothing observes this directly as a SwiftUI view
 // model; LiveLessonViewModel calls it and republishes what the UI needs
 // (currentSpeechDuration, isSynthesizingSpeech) itself.
@@ -20,21 +21,18 @@ final class NPCVoiceService: NSObject {
         let durationSeconds: Double
     }
 
-    // Confirmed from the working PocketTTSDemo harness's TTSVoice enum
-    // (case jean = 3), not guessed.
-    private static let jeanVoiceIndex: UInt32 = 3
-
     private var engine: PocketTTSSwift?
     private var loadTask: Task<PocketTTSSwift, Error>?
     private var player: AVAudioPlayer?
     private var playerDelegate: AudioPlayerCompletionDelegate?
 
-    /// Synthesizes `text` in Jean's voice. Loads the model lazily on first
-    /// call (staging bundle resources into a real directory tree first --
-    /// see PocketTTSModelStaging) and reuses it afterward.
-    func speak(_ text: String) async throws -> Speech {
+    /// Synthesizes `text` in the given voice (see CharacterAppearance.voiceIndex).
+    /// Loads the model lazily on first call (staging bundle resources into a
+    /// real directory tree first -- see PocketTTSModelStaging) and reuses it
+    /// afterward.
+    func speak(_ text: String, voice: UInt32) async throws -> Speech {
         let engine = try await loadedEngine()
-        let result = try await engine.synthesize(text: text, voice: Self.jeanVoiceIndex)
+        let result = try await engine.synthesize(text: text, voice: voice)
         return Speech(audioData: result.audioData, durationSeconds: result.durationSeconds)
     }
 
@@ -49,6 +47,16 @@ final class NPCVoiceService: NSObject {
     func prepare(_ audioData: Data) -> Bool {
         do {
             let session = AVAudioSession.sharedInstance()
+            // Deactivate before changing category rather than switching an
+            // already-active session -- SpeechRecognitionService leaves the
+            // session active in .playAndRecord after the user's turn (its own
+            // stopListening() deactivates it, but the two services alternate
+            // turn by turn, so this side must not assume it's inheriting an
+            // idle session). Apple's own guidance is deactivate, change
+            // category, then reactivate; changing category on a session
+            // that's still active for a different category is exactly the
+            // kind of thing that works once and then silently misbehaves.
+            try? session.setActive(false, options: .notifyOthersOnDeactivation)
             try session.setCategory(.playback, mode: .default, options: [.duckOthers])
             try session.setActive(true)
 
@@ -56,6 +64,12 @@ final class NPCVoiceService: NSObject {
             let delegate = AudioPlayerCompletionDelegate { [weak self] in
                 self?.player = nil
                 self?.playerDelegate = nil
+                // Release the session on completion, not just the player --
+                // otherwise the session sits active in .playback until
+                // something else forces a change, which is the same
+                // conflict this fix is closing, just shifted from "stop()
+                // never deactivates" to "natural completion never does".
+                try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
             }
             newPlayer.delegate = delegate
             newPlayer.prepareToPlay()
@@ -80,6 +94,11 @@ final class NPCVoiceService: NSObject {
         player?.stop()
         player = nil
         playerDelegate = nil
+        // See prepare()'s comment: natural completion releases the session
+        // via the player delegate, but an interrupted stop (user leaves
+        // mid-line) skips that callback entirely, so it has to happen here
+        // too or the session is left active in .playback indefinitely.
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
     private func loadedEngine() async throws -> PocketTTSSwift {
@@ -92,7 +111,11 @@ final class NPCVoiceService: NSObject {
             let modelDir = try PocketTTSModelStaging.stagedModelDirectory()
             let newEngine = PocketTTSSwift(modelPath: modelDir.path)
             try await newEngine.load()
-            try await newEngine.configure(.init(voiceIndex: Self.jeanVoiceIndex, useFixedSeed: true))
+            // The configured index here is only ever a startup default --
+            // every real call goes through speak(_:voice:), which passes an
+            // explicit per-character voice straight to synthesizeWithVoice
+            // and overrides this regardless.
+            try await newEngine.configure(.init(voiceIndex: 3, useFixedSeed: true))
             return newEngine
         }
         loadTask = task

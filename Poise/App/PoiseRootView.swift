@@ -2,8 +2,21 @@ import SwiftUI
 
 struct PoiseRootView: View {
     @State private var selectedTab: AppTab = .learn
+    @State private var showOnboarding = false
     @State private var showSignInPrompt = false
+    // Set only by the debug "replay first launch" button (ProfileView's
+    // Testing section) -- distinguishes that path from a real first launch
+    // so onboarding's onDismiss knows to chain straight into the sign-in
+    // prompt afterward, rather than leaving it for a later cold launch the
+    // way a genuine first run does. Harmless left in Release: nothing ever
+    // sets it there, since the button that does is #if DEBUG-gated.
+    @State private var isDebugReplayingFirstLaunch = false
     @Environment(\.scenePhase) private var scenePhase
+    // Watched here, not inside any one tab, because a badge earned by
+    // finishing a lesson is announced only after LiveLessonFlowView has
+    // already dismissed back out to whichever tab was underneath it -- root
+    // is the one place guaranteed to still be around to show it.
+    @ObservedObject private var progressStore = LearnProgressStore.shared
 
     var body: some View {
         // No NavigationStack per tab. None of the three screens pushes
@@ -20,7 +33,11 @@ struct PoiseRootView: View {
             case .progress:
                 ProgressDashboardView()
             case .profile:
+                #if DEBUG
+                ProfileView(onDebugReplayFirstLaunch: replayFirstLaunch)
+                #else
                 ProfileView()
+                #endif
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -34,7 +51,14 @@ struct PoiseRootView: View {
             // Confirms (or corrects) the cached Pro flag the app launched
             // with, so the energy cap and regen interval settle to the truth.
             await SubscriptionStore.shared.refreshAtLaunch()
-            if AccountStore.shared.shouldShowSignInPrompt {
+            // Onboarding takes priority on a truly fresh install. If it
+            // needs to show this launch, the sign-in prompt is left alone --
+            // its own shouldShowSignInPrompt check naturally fires on a
+            // later become-active if it's still relevant, rather than both
+            // competing for the same launch.
+            if OnboardingStore.shouldShow {
+                showOnboarding = true
+            } else if AccountStore.shared.shouldShowSignInPrompt {
                 showSignInPrompt = true
             }
         }
@@ -59,7 +83,33 @@ struct PoiseRootView: View {
                 // A subscription can lapse, be cancelled, or be restored on
                 // another device while the app is backgrounded.
                 Task { await SubscriptionStore.shared.refreshEntitlement() }
+                // They're back -- the come-back nudge no longer applies.
+                // The streak reminder is left alone: merely opening the app
+                // isn't the same as having practised (only
+                // LearnProgressStore.recordCompletion cancels that one).
+                NotificationService.shared.cancelComeBackReminder()
+            } else if newPhase == .background {
+                scheduleBackgroundReminders()
             }
+        }
+        // Once, ever, per install -- see OnboardingStore.shouldShow for why
+        // that's a local flag rather than a synced one. fullScreenCover, not
+        // sheet: this is a proper first-run experience, not a dismissible
+        // card, and it only ever closes one way (finishing the flow), so
+        // onDismiss is the one place that needs to mark it shown.
+        .fullScreenCover(isPresented: $showOnboarding, onDismiss: {
+            OnboardingStore.markShown()
+            // Only the debug replay chains straight into the sign-in prompt --
+            // see isDebugReplayingFirstLaunch's own comment for why a real
+            // first launch doesn't do this here.
+            if isDebugReplayingFirstLaunch {
+                isDebugReplayingFirstLaunch = false
+                if AccountStore.shared.shouldShowSignInPrompt {
+                    showSignInPrompt = true
+                }
+            }
+        }) {
+            OnboardingView(onFinish: { showOnboarding = false })
         }
         // Once, ever, per install -- see AccountStore.shouldShowSignInPrompt
         // for why that's a local flag rather than a synced one. `onDismiss`
@@ -68,6 +118,94 @@ struct PoiseRootView: View {
         .sheet(isPresented: $showSignInPrompt, onDismiss: { AccountStore.shared.markSignInPromptShown() }) {
             SignInPromptSheet(onDismiss: { showSignInPrompt = false })
         }
+        // Only ever the front of the queue -- one banner on screen at a
+        // time, even if a single completion earned several badges at once.
+        // Keyed on the badge's own id so a new banner sliding in after the
+        // old one is dismissed is a fresh view (a fresh auto-dismiss timer,
+        // not the outgoing one's timer racing to close a card that isn't
+        // its own anymore).
+        .overlay(alignment: .top) {
+            if let badge = progressStore.pendingBadgeAnnouncements.first {
+                BadgeEarnedBanner(badge: badge) {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                        progressStore.dismissCurrentBadgeAnnouncement()
+                    }
+                }
+                .id(badge.id)
+                .padding(.horizontal, 16)
+                // Clears PoiseTopBar (each tab's own safeAreaInset, roughly
+                // logo/chip row height plus its own top/bottom padding) --
+                // without this the banner lands right on top of the streak
+                // and energy chips instead of below them.
+                .padding(.top, 72)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .zIndex(1)
+            }
+        }
+        .animation(.spring(response: 0.32, dampingFraction: 0.82), value: progressStore.pendingBadgeAnnouncements.first?.id)
+    }
+
+    #if DEBUG
+    // Debug-only escape hatch (ProfileView's Testing section) -- replays
+    // both one-time first-launch gates without a real uninstall/reinstall.
+    // Resets the underlying flags, then presents onboarding immediately;
+    // the sign-in prompt follows once onboarding is dismissed (see
+    // isDebugReplayingFirstLaunch).
+    private func replayFirstLaunch() {
+        OnboardingStore.reset()
+        AccountStore.shared.resetSignInPromptShown()
+        // shouldShowSignInPrompt also requires !isSignedIn -- resetting the
+        // "already shown" flag alone does nothing once a real Sign in with
+        // Apple has happened, since the Keychain entry it wrote survives a
+        // plain reinstall (that's the whole point of using Keychain over
+        // UserDefaults here). A genuine fresh install wouldn't have that
+        // entry either, so signing out is part of faking one, not a
+        // separate side effect.
+        if AccountStore.shared.isSignedIn {
+            AccountStore.shared.signOut()
+        }
+        isDebugReplayingFirstLaunch = true
+        showOnboarding = true
+    }
+    #endif
+
+    // Backgrounding is the one moment both local reminders get (re)computed
+    // -- there's no server ticking these on a schedule, so this app has to
+    // set its own alarm clock on the way out every time. Never requests
+    // permission itself (see NotificationService.isAuthorized's doc): that
+    // only ever happens from the explicit toggle in Profile's PrivacyCard.
+    private func scheduleBackgroundReminders() {
+        Task {
+            guard await NotificationService.isAuthorized else { return }
+            let store = LearnProgressStore.shared
+            // Only worth nagging about if there's a streak alive to lose
+            // and today hasn't already covered it.
+            if store.currentStreak > 0 && !store.practisedToday {
+                NotificationService.shared.scheduleStreakReminder(
+                    streakLength: store.currentStreak,
+                    at: streakReminderDate()
+                )
+            }
+            // Unconditional, unlike the streak reminder -- even a
+            // brand-new account with no streak yet has an "up next".
+            NotificationService.shared.scheduleComeBackReminder(
+                afterDays: 2,
+                upNextTitle: store.upNext?.lesson.title
+            )
+        }
+    }
+
+    // 7pm local, today -- late enough that most people have had a chance to
+    // fit practice in, early enough it doesn't land at midnight. If it's
+    // already past 7pm when the app backgrounds, firing "later today" a
+    // couple of hours out still beats silently deferring the whole reminder
+    // to tomorrow, which would miss the streak's actual deadline (midnight).
+    private func streakReminderDate() -> Date {
+        let now = Date()
+        if let sevenPM = Calendar.current.date(bySettingHour: 19, minute: 0, second: 0, of: now), sevenPM > now {
+            return sevenPM
+        }
+        return now.addingTimeInterval(2 * 60 * 60)
     }
 }
 
