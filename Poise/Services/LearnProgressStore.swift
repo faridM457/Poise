@@ -186,6 +186,10 @@ final class LearnProgressStore: ObservableObject {
         // Otherwise a reset account would reopen every lesson holding the
         // scenario its previous owner had already worked through.
         ScenarioCache.invalidateAll()
+        OneSignalNotificationService.shared.synchronizeUserData(
+            isPro: SubscriptionStore.shared.isPro,
+            progress: self
+        )
     }
 
     // Adopts the server's ledger. On the live path the server is the one
@@ -281,6 +285,11 @@ final class LearnProgressStore: ObservableObject {
            let data = cloud.data(forKey: Self.sessionsKey),
            let decoded = try? JSONDecoder().decode([SessionRecord].self, from: data) {
             sessions = decoded.sorted { $0.finishedAt < $1.finishedAt }
+            completedLessonIDs = Set(sessions.map(\.lessonID))
+            OneSignalNotificationService.shared.synchronizeUserData(
+                isPro: SubscriptionStore.shared.isPro,
+                progress: self
+            )
         }
         if changedKeys.contains(Self.energyKey) {
             energyRemaining = Int(cloud.longLong(forKey: Self.energyKey))
@@ -601,15 +610,15 @@ extension LearnProgressStore {
         return sessions.filter { $0.finishedAt >= cutoff }.count
     }
 
-    // One completed rubric item is worth 10 XP. This derives the Journey tag
-    // from the same session ledger as the rest of Progress instead of storing
-    // another counter that could drift.
-    var weeklyXP: Int {
-        guard let cutoff = calendar.date(byAdding: .day, value: -6, to: calendar.startOfDay(for: now)) else { return 0 }
-        return sessions.filter { $0.finishedAt >= cutoff }.reduce(0) { $0 + ($1.criteriaMet * 10) }
-    }
-
     var remainingThisWeek: Int { max(0, Self.weeklyGoal - conversationsThisWeek) }
+
+    // A streak survives through the calendar day after its latest practice and
+    // expires at that day's final second. Nil means there is no active streak,
+    // so OneSignal must remove rather than fabricate an expiration timestamp.
+    var streakExpiresAt: Date? {
+        guard currentStreak > 0, let latestPracticeDay = practiceDays.max() else { return nil }
+        return calendar.date(byAdding: DateComponents(day: 2, second: -1), to: latestPracticeDay)
+    }
 
     // The seven days ending today, for the Learn page's activity strip.
     var weekEndingToday: [PracticeDay] {

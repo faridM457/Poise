@@ -117,7 +117,7 @@ private struct NotificationPreferencesCard: View {
                     PoiseDivider().padding(.horizontal, 16)
                     notificationToggle(
                         title: "Weekly progress summary",
-                        subtitle: "A weekly recap of practice, XP and streak progress.",
+                        subtitle: "A weekly recap of completed practice and streak progress.",
                         isOn: service.preferences.weeklyProgressSummary,
                         update: service.setWeeklyProgressSummary
                     )

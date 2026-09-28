@@ -55,6 +55,10 @@ final class AccountStore: ObservableObject {
         KeychainStore.write(userID, forKey: Self.keychainKey)
         appleUserID = userID
         OneSignalNotificationService.shared.synchronizeIdentity(userID)
+        OneSignalNotificationService.shared.synchronizeUserData(
+            isPro: SubscriptionStore.shared.isPro,
+            progress: LearnProgressStore.shared
+        )
 
         // Apple hands back the name only on this first authorization, ever
         // -- a later sign-in on a new device won't have it. Only used to
@@ -67,6 +71,7 @@ final class AccountStore: ObservableObject {
         Task {
             do {
                 _ = try await Purchases.shared.logIn(userID)
+                await SubscriptionStore.shared.refreshEntitlement()
             } catch {
                 print("AccountStore: RevenueCat logIn failed: \(error.localizedDescription)")
             }
@@ -77,9 +82,14 @@ final class AccountStore: ObservableObject {
         KeychainStore.delete(Self.keychainKey)
         appleUserID = nil
         OneSignalNotificationService.shared.synchronizeIdentity(nil)
+        OneSignalNotificationService.shared.synchronizeUserData(
+            isPro: SubscriptionStore.shared.isPro,
+            progress: LearnProgressStore.shared
+        )
         Task {
             do {
                 _ = try await Purchases.shared.logOut()
+                await SubscriptionStore.shared.refreshEntitlement()
             } catch {
                 print("AccountStore: RevenueCat logOut failed: \(error.localizedDescription)")
             }
