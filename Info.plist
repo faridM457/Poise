@@ -246,5 +246,24 @@
 			<string>3qcr597p9d.skadnetwork</string>
 		</dict>
 	</array>
+	<!-- Lets OneSignal route a tapped push notification to a specific
+	     screen (see NotificationRouter/PoiseRootView's onOpenURL). -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.sapersolutions.poise.notifications</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>poise</string>
+			</array>
+		</dict>
+	</array>
+	<!-- Required for OneSignal push notifications to be delivered while
+	     the app is backgrounded/not running. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 </dict>
 </plist>

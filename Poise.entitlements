@@ -20,5 +20,20 @@
 	     value. -->
 	<key>com.apple.developer.ubiquity-kvstore-identifier</key>
 	<string>$(TeamIdentifierPrefix)$(CFBundleIdentifier)</string>
+	<!-- Push notifications via OneSignal. REQUIRES the "Push Notifications"
+	     capability enabled on the App ID in the Apple Developer portal, same
+	     caveat as above -- this file alone is not enough. "development"
+	     matches a Debug build talking to APNs' sandbox environment; a
+	     Release/TestFlight build needs this switched to "production". -->
+	<key>aps-environment</key>
+	<string>development</string>
+	<!-- Shared container between the main app and
+	     OneSignalNotificationServiceExtension (the rich-notification
+	     extension target) -- REQUIRES the "App Groups" capability enabled
+	     on both targets' App IDs in the Apple Developer portal. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.sapersolutions.poise.onesignal</string>
+	</array>
 </dict>
 </plist>

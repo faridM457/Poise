@@ -410,6 +410,11 @@ final class LearnProgressStore: ObservableObject {
         let earnedBefore = Set(earnedBadges.map(\.id))
         sessions.append(record)
         persistSessions()
+        OneSignalNotificationService.shared.recordLessonCompleted()
+        OneSignalNotificationService.shared.synchronizeUserData(
+            isPro: SubscriptionStore.shared.isPro,
+            progress: self
+        )
         // The scenario you just played is spent. Clearing it here -- and only
         // here -- is what makes "the lesson changes after you finish it" true.
         ScenarioCache.invalidate(lessonID: lessonID)
@@ -673,6 +678,14 @@ extension LearnProgressStore {
     }
 
     var remainingThisWeek: Int { max(0, weeklyGoal - conversationsThisWeek) }
+
+    // One completed rubric item is worth 10 XP. This derives the OneSignal
+    // engagement tag from the same session ledger as the rest of Progress
+    // instead of storing another counter that could drift.
+    var weeklyXP: Int {
+        guard let cutoff = calendar.date(byAdding: .day, value: -6, to: calendar.startOfDay(for: now)) else { return 0 }
+        return sessions.filter { $0.finishedAt >= cutoff }.reduce(0) { $0 + ($1.criteriaMet * 10) }
+    }
 
     // The seven days ending today, for the Learn page's activity strip.
     var weekEndingToday: [PracticeDay] {
