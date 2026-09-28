@@ -14,6 +14,7 @@ struct ProfileView: View {
     @ObservedObject private var profile = UserProfileStore.shared
     @ObservedObject private var subscriptions = SubscriptionStore.shared
     @ObservedObject private var account = AccountStore.shared
+    @ObservedObject private var notifications = OneSignalNotificationService.shared
 
     @State private var showPaywall = false
     @State private var showResetConfirm = false
@@ -44,6 +45,10 @@ struct ProfileView: View {
 
                 PoiseSection(title: "Privacy") {
                     PrivacyCard()
+                }
+
+                PoiseSection(title: "Notifications") {
+                    NotificationPreferencesCard(service: notifications)
                 }
 
                 PoiseSection(title: "Account & settings") {
@@ -93,6 +98,78 @@ struct ProfileView: View {
         } message: {
             Text("Every finished conversation, your streak and all badges will be cleared. This can't be undone.")
         }
+    }
+}
+
+private struct NotificationPreferencesCard: View {
+    @ObservedObject var service: OneSignalNotificationService
+    @Environment(\.scenePhase) private var scenePhase
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            PoiseSurfaceCard(padding: 0) {
+                VStack(spacing: 0) {
+                    notificationToggle(
+                        title: "Practice reminders",
+                        subtitle: "A gentle prompt when you're ready for today's communication practice.",
+                        isOn: service.preferences.practiceReminders,
+                        update: service.setPracticeReminders
+                    )
+                    PoiseDivider().padding(.horizontal, 16)
+                    notificationToggle(
+                        title: "Streak expiration alerts",
+                        subtitle: "A heads-up before an active practice streak expires.",
+                        isOn: service.preferences.streakExpirationAlerts,
+                        update: service.setStreakExpirationAlerts
+                    )
+                    PoiseDivider().padding(.horizontal, 16)
+                    notificationToggle(
+                        title: "Weekly progress summary",
+                        subtitle: "A weekly recap of practice, XP and streak progress.",
+                        isOn: service.preferences.weeklyProgressSummary,
+                        update: service.setWeeklyProgressSummary
+                    )
+                    PoiseDivider().padding(.horizontal, 16)
+                    notificationToggle(
+                        title: "Custom-scenario reminders",
+                        subtitle: "A nudge to try the custom scenario builder if it's been a while.",
+                        isOn: service.preferences.customScenarioReminders,
+                        update: service.setCustomScenarioReminders
+                    )
+                }
+            }
+
+            if service.permissionState == .denied {
+                Button("Open iOS notification settings") { service.openSystemSettings() }
+                    .font(PoiseType.subhead(.bold))
+                    .foregroundStyle(Color.poiseBlueDark)
+                    .accessibilityLabel("Open Poise notification settings")
+            } else if service.permissionState == .provisional {
+                FootNote("Notifications are currently delivered quietly. You can change delivery in iOS Settings.")
+            } else {
+                FootNote("Preferences stay on this device and are used by OneSignal Journeys. Poise never asks at launch.")
+            }
+        }
+        .task { await service.refreshPermissionState() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await service.refreshPermissionState() } }
+        }
+    }
+
+    private func notificationToggle(
+        title: String,
+        subtitle: String,
+        isOn: Bool,
+        update: @escaping (Bool) async -> Void
+    ) -> some View {
+        SettingsToggleRow(
+            title: title,
+            subtitle: subtitle,
+            isOn: Binding(
+                get: { isOn },
+                set: { newValue in Task { await update(newValue) } }
+            )
+        )
     }
 }
 

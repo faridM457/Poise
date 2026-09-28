@@ -4,6 +4,9 @@ struct PoiseRootView: View {
     @State private var selectedTab: AppTab = .learn
     @State private var showOnboarding = false
     @State private var showSignInPrompt = false
+    @State private var showNotificationPaywall = false
+    @State private var showRoutedCustomScenario = false
+    @ObservedObject private var notificationRouter = NotificationRouter.shared
     // Set only by the debug "replay first launch" button (ProfileView's
     // Testing section) -- distinguishes that path from a real first launch
     // so onboarding's onDismiss knows to chain straight into the sign-in
@@ -61,6 +64,7 @@ struct PoiseRootView: View {
             } else if AccountStore.shared.shouldShowSignInPrompt {
                 showSignInPrompt = true
             }
+            handleNotificationDestination()
         }
         // Prefetched here, at launch, rather than left to PaywallSheet's own
         // .task -- offerings arriving *after* the paywall sheet has already
@@ -118,6 +122,17 @@ struct PoiseRootView: View {
         .sheet(isPresented: $showSignInPrompt, onDismiss: { AccountStore.shared.markSignInPromptShown() }) {
             SignInPromptSheet(onDismiss: { showSignInPrompt = false })
         }
+        .sheet(isPresented: $showNotificationPaywall) {
+            PaywallSheet(subscriptions: SubscriptionStore.shared)
+                .presentationBackground(Color.poiseCanvas)
+        }
+        .fullScreenCover(isPresented: $showRoutedCustomScenario) {
+            CustomScenarioFlowView()
+        }
+        .onOpenURL { notificationRouter.route($0) }
+        .onChange(of: notificationRouter.pendingDestination) { _, _ in
+            handleNotificationDestination()
+        }
         // Only ever the front of the queue -- one banner on screen at a
         // time, even if a single completion earned several badges at once.
         // Keyed on the badge's own id so a new banner sliding in after the
@@ -143,6 +158,28 @@ struct PoiseRootView: View {
             }
         }
         .animation(.spring(response: 0.32, dampingFraction: 0.82), value: progressStore.pendingBadgeAnnouncements.first?.id)
+    }
+
+    // A tapped push notification (or a poise:// URL while the app is
+    // already running) sets NotificationRouter.pendingDestination; this
+    // drains it and acts on it. Called both at launch (a notification that
+    // launched the app cold) and on every later change (one tapped while
+    // already running). customScenario's id isn't resolved to anything --
+    // there's no "resume a specific generated scenario" concept in the real
+    // engine-backed flow -- so it just opens the builder fresh.
+    private func handleNotificationDestination() {
+        guard let destination = notificationRouter.consume() else { return }
+        switch destination {
+        case .learn:
+            selectedTab = .learn
+        case .progress:
+            selectedTab = .progress
+        case .paywall:
+            showNotificationPaywall = true
+        case .customScenario:
+            selectedTab = .learn
+            showRoutedCustomScenario = true
+        }
     }
 
     #if DEBUG
