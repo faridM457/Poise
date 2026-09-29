@@ -11,16 +11,20 @@ The iOS app initializes OneSignal, owns permission UI, records app events, and s
 
 ## Tags
 
-- `subscription_tier`: `free` or `pro`
+The OneSignal plan allows at most 10 tags per user, and an update that would exceed that is rejected entirely. These are exactly 10; adding a tag means removing one.
+
 - `streak_count`: integer string
 - `streak_expires_at`: Unix timestamp in seconds
 - `last_practice_at`: Unix timestamp in seconds
-- `weekly_xp`: integer string; 10 XP per completed rubric item in the current seven-day window
+- `weekly_sessions_completed`: integer string; conversations finished in the last seven days
+- `weekly_criteria_met`: integer string; criteria met across those conversations
 - `daily_reminders_enabled`: boolean string
 - `streak_alerts_enabled`: boolean string
 - `weekly_summary_enabled`: boolean string
 - `custom_scenario_reminders_enabled`: boolean string
-- `engagement_notification_daily_limit`: `2`
+- `has_unfinished_custom_scenario`: boolean string; true between `custom_scenario_started` and `custom_scenario_completed`
+
+Retired, and actively removed from existing users: `weekly_xp`, `engagement_notification_daily_limit`, `subscription_tier` (tier changes are still sent as the `subscription_changed` event).
 
 ## Launch URLs
 

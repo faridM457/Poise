@@ -177,6 +177,6 @@ final class SubscriptionStore: ObservableObject {
     private func syncEntitlement() {
         LearnProgressStore.shared.applyEntitlement(isPro: isPro)
         OneSignalNotificationService.shared.recordSubscriptionChanged(isPro: isPro)
-        OneSignalNotificationService.shared.synchronizeUserData(isPro: isPro, progress: LearnProgressStore.shared)
+        OneSignalNotificationService.shared.synchronizeUserData(progress: LearnProgressStore.shared)
     }
 }

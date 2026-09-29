@@ -234,6 +234,10 @@ private struct EngineErrorBody: Decodable {
     let energy: ServerEnergy?
 }
 
+private struct EnergyResponse: Decodable {
+    let energy: ServerEnergy
+}
+
 enum ConversationEngineError: LocalizedError {
     case server(String)
     case invalidResponse
@@ -278,6 +282,18 @@ enum ConversationEngineClient {
 
     static func fetchScenario(lessonId: String) async throws -> ScenarioResponse {
         try await post("api/scenario", body: ["lessonId": lessonId])
+    }
+
+    // Read-only: the server's real number, so the app can show it correctly
+    // on launch/foreground instead of only ever finding out via a 402 from
+    // actually trying to spend a unit (see server/index.js's own comment on
+    // GET /api/energy -- this call existed on the server from the start;
+    // nothing on the client was ever calling it). Callers should treat
+    // failure as best-effort and silently keep whatever was last known --
+    // this is a background sync, not something to surface as an error.
+    static func fetchEnergy() async throws -> ServerEnergy {
+        let response: EnergyResponse = try await get("api/energy")
+        return response.energy
     }
 
     // Shipaton-judge code redemption (see conversation-engine/server/energy.js:
@@ -396,7 +412,18 @@ enum ConversationEngineClient {
             request.setValue(conversationToken, forHTTPHeaderField: "X-Poise-Conversation")
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return try await perform(request)
+    }
 
+    private static func get<T: Decodable>(_ path: String) async throws -> T {
+        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        request.httpMethod = "GET"
+        request.setValue(EngineConfig.appKey, forHTTPHeaderField: "X-Poise-App-Key")
+        request.setValue(Purchases.shared.appUserID, forHTTPHeaderField: "X-Poise-User")
+        return try await perform(request)
+    }
+
+    private static func perform<T: Decodable>(_ request: URLRequest) async throws -> T {
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw ConversationEngineError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {

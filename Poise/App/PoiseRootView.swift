@@ -65,6 +65,7 @@ struct PoiseRootView: View {
                 showSignInPrompt = true
             }
             handleNotificationDestination()
+            await syncEnergyFromServer()
         }
         // Prefetched here, at launch, rather than left to PaywallSheet's own
         // .task -- offerings arriving *after* the paywall sheet has already
@@ -92,6 +93,7 @@ struct PoiseRootView: View {
                 // isn't the same as having practised (only
                 // LearnProgressStore.recordCompletion cancels that one).
                 NotificationService.shared.cancelComeBackReminder()
+                Task { await syncEnergyFromServer() }
             } else if newPhase == .background {
                 scheduleBackgroundReminders()
             }
@@ -205,6 +207,21 @@ struct PoiseRootView: View {
         showOnboarding = true
     }
     #endif
+
+    // The displayed energy count is a local cache (LearnProgressStore),
+    // updated only as a side effect of turn/feedback calls actually
+    // succeeding -- so after anything that resets or diverges the local
+    // copy (a reinstall, restoring an old iCloud KV value, or simply the
+    // server ticking down while the app was closed) it can show a number
+    // the server would reject. GET /api/energy exists specifically to let
+    // the app ask instead of guess (see conversation-engine's own comment
+    // on that route); best-effort and silent on failure, since this is a
+    // background correction, not something to interrupt launch over, and
+    // useMockDataForUITesting has no server to ask in the first place.
+    private func syncEnergyFromServer() async {
+        guard let energy = try? await ConversationEngineClient.fetchEnergy() else { return }
+        await LearnProgressStore.shared.applyServerEnergy(energy)
+    }
 
     // Backgrounding is the one moment both local reminders get (re)computed
     // -- there's no server ticking these on a schedule, so this app has to

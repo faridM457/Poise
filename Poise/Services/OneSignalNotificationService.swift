@@ -147,7 +147,22 @@ final class OneSignalNotificationService: ObservableObject {
         UIApplication.shared.open(url)
     }
 
-    func synchronizeUserData(isPro: Bool, progress: LearnProgressStore) {
+    // OneSignal's plan caps each user at 10 tags, and an update that would
+    // push a user past the cap is rejected whole (409 entitlements-tag-limit)
+    // -- so going over silently froze every tag below, not just the extra
+    // one. The 9 here plus has_unfinished_custom_scenario (set on custom
+    // scenario start/finish) make exactly 10. Keep it that way: adding a tag
+    // means removing one.
+    //
+    // Retired tags still count against the cap on users who already have
+    // them, so they're deleted explicitly: weekly_xp (replaced by the two
+    // weekly_* tags), engagement_notification_daily_limit (the same "2" on
+    // every user; the daily limit is enforced in the Journeys), and
+    // subscription_tier (no Journey filters on it; tier changes still reach
+    // OneSignal as the subscription_changed event).
+    private static let retiredTags = ["weekly_xp", "engagement_notification_daily_limit", "subscription_tier"]
+
+    func synchronizeUserData(progress: LearnProgressStore) {
         let lastPractice = progress.sessions.last?.finishedAt
         let streakExpiration = Calendar.current.date(
             bySettingHour: 23,
@@ -156,17 +171,17 @@ final class OneSignalNotificationService: ObservableObject {
             of: progress.practisedToday ? progress.now.addingTimeInterval(86_400) : progress.now
         )
         let tags: [String: String] = [
-            "subscription_tier": isPro ? "pro" : "free",
             "streak_count": String(progress.currentStreak),
             "streak_expires_at": timestamp(streakExpiration),
             "last_practice_at": timestamp(lastPractice),
-            "weekly_xp": String(progress.weeklyXP),
+            "weekly_sessions_completed": String(progress.conversationsThisWeek),
+            "weekly_criteria_met": String(progress.criteriaMetThisWeek),
             "daily_reminders_enabled": String(preferences.practiceReminders),
             "streak_alerts_enabled": String(preferences.streakExpirationAlerts),
             "weekly_summary_enabled": String(preferences.weeklyProgressSummary),
             "custom_scenario_reminders_enabled": String(preferences.customScenarioReminders),
-            "engagement_notification_daily_limit": "2"
         ]
+        OneSignal.User.removeTags(Self.retiredTags)
         OneSignal.User.addTags(tags)
     }
 
@@ -183,11 +198,20 @@ final class OneSignalNotificationService: ObservableObject {
     // resume later. Kept the engagement events (still useful for OneSignal
     // targeting/segmentation), dropped the resume-persistence half, which
     // has no equivalent in the real flow.
+    //
+    // has_unfinished_custom_scenario is a tag, not just the events below --
+    // the "Continue Custom Scenario" OneSignal Journey is segment-triggered
+    // (there's no "exit if event occurs" / goal feature available to cancel
+    // a send if the user finishes before the reminder fires), so the
+    // segment needs an actual queryable state to filter on, not just a
+    // point-in-time event it can't see past.
     func recordCustomScenarioStarted(id: String) {
+        OneSignal.User.addTags(["has_unfinished_custom_scenario": "true"])
         OneSignal.User.trackEvent(name: "custom_scenario_started", properties: ["scenario_id": id])
     }
 
     func recordCustomScenarioCompleted(id: String) {
+        OneSignal.User.addTags(["has_unfinished_custom_scenario": "false"])
         OneSignal.User.trackEvent(name: "custom_scenario_completed", properties: ["scenario_id": id])
     }
 
@@ -217,7 +241,7 @@ final class OneSignalNotificationService: ObservableObject {
         }
         preferences[keyPath: keyPath] = enabled
         persistPreferences()
-        synchronizeUserData(isPro: SubscriptionStore.shared.isPro, progress: LearnProgressStore.shared)
+        synchronizeUserData(progress: LearnProgressStore.shared)
     }
 
     private func persistPreferences() {

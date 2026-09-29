@@ -180,6 +180,7 @@ final class LoopingPlayerUIView: UIView {
         let layer: AVPlayerLayer
         var endObserver: NSObjectProtocol?
         var readyObserver: NSKeyValueObservation?
+        var stateObserver: NSKeyValueObservation?
         // Latches true the first time this layer reports ready, and never
         // resets. isReadyForDisplay itself can transiently flip back to
         // false on this clip's OWN loop-restart seek (see endObserver
@@ -206,6 +207,15 @@ final class LoopingPlayerUIView: UIView {
 
     private var clips: [String: LoadedClip] = [:]
     private var currentResourceName: String?
+    // Name of whichever clip is actually on screen right now. Distinct from
+    // currentResourceName (the target we WANT showing): if the target has
+    // never become ready even once -- e.g. a mood switch landing before its
+    // clip decoded a first frame, which the pre-dialogue pause doesn't
+    // always leave enough time for -- there is nothing to swap to yet.
+    // Keeping the outgoing clip visible in that case (real content) beats
+    // hiding it in favor of a target that isn't there yet (nothing, i.e.
+    // this view's .clear background showing through as white).
+    private var lastVisibleResourceName: String?
 
     init(resourceName: String, gravity: AVLayerVideoGravity) {
         super.init(frame: .zero)
@@ -223,6 +233,7 @@ final class LoopingPlayerUIView: UIView {
                 NotificationCenter.default.removeObserver(token)
             }
             clip.readyObserver?.invalidate()
+            clip.stateObserver?.invalidate()
         }
     }
 
@@ -253,11 +264,20 @@ final class LoopingPlayerUIView: UIView {
     private func applyVisibility() {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        for (name, clip) in clips {
+        for clip in clips.values {
             if clip.layer.isReadyForDisplay { clip.hasBeenReady = true }
-            let visible = name == currentResourceName && clip.hasBeenReady
-            clip.layer.opacity = visible ? 1 : 0
         }
+        // Show the target mood's clip once it's actually ready. Until then,
+        // keep showing whatever was already visible instead of hiding it --
+        // a stale-but-real frame beats a gap with nothing on screen. Once
+        // the target's own readyObserver fires (async, separately), this
+        // runs again and swaps over correctly.
+        let targetReady = currentResourceName.flatMap { clips[$0] }?.hasBeenReady ?? false
+        let nameToShow = targetReady ? currentResourceName : lastVisibleResourceName
+        for (name, clip) in clips {
+            clip.layer.opacity = name == nameToShow ? 1 : 0
+        }
+        if let nameToShow { lastVisibleResourceName = nameToShow }
         CATransaction.commit()
     }
 
@@ -290,6 +310,23 @@ final class LoopingPlayerUIView: UIView {
         clip.readyObserver = playerLayer.observe(\.isReadyForDisplay, options: [.initial, .new]) { [weak self] layer, _ in
             guard layer.isReadyForDisplay else { return }
             Task { @MainActor in self?.applyVisibility() }
+        }
+        // These clips are meant to play forever; nothing in this view ever
+        // intentionally pauses one. In practice something external does
+        // anyway -- most likely NPCVoiceService or SpeechRecognitionService
+        // deactivating and reactivating the shared AVAudioSession every time
+        // NPC speech or dictation starts/stops, which interrupts every
+        // AVPlayer in the process, muted background video included, with
+        // nothing else to resume them afterward. That reads exactly as "the
+        // character freezes on one frame right when dialogue starts." So:
+        // any time this clip's own player goes to .paused, resume it
+        // unconditionally. Harmless at the clip's own natural end too --
+        // play() on an item already at its end is a no-op, and the
+        // endObserver above corrects position with its own seek-then-play
+        // immediately after.
+        clip.stateObserver = player.observe(\.timeControlStatus, options: [.new]) { observedPlayer, _ in
+            guard observedPlayer.timeControlStatus == .paused else { return }
+            observedPlayer.play()
         }
         clips[resourceName] = clip
         player.play()
