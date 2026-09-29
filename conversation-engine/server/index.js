@@ -38,6 +38,16 @@ function lessonSummary(lesson) {
 // allows, at this user's own energy cost.
 const CUSTOM_LESSON_FIELD_LIMIT = 2000;
 const CUSTOM_LESSON_MAX_CRITERIA = 6;
+// Bounds the user's own per-turn response -- unlike a custom lesson's fields
+// (author-time, submitted once) or a recorded voice turn (already bounded to
+// 90 seconds by VoiceRecordingWriter on the client), typed/dictated userResponse
+// had NO length check anywhere, client or server, before this: someone could
+// paste or dictate an arbitrarily large block of text into every one of
+// MAX_USER_TURNS turns, at this user's own energy cost but an unbounded
+// prompt-size cost to the model call itself. ~1500 chars is generous for an
+// actual spoken conversational turn -- roughly what 90 seconds of speech at a
+// natural pace transcribes to -- so real use is never close to this.
+const MAX_USER_RESPONSE_LENGTH = 1500;
 
 function isValidCustomLesson(lesson) {
   if (!lesson || typeof lesson !== "object") return false;
@@ -173,7 +183,14 @@ app.post("/api/custom-scenario", rateLimit("scenario"), async (req, res) => {
     if (prompt.length > CUSTOM_SCENARIO_PROMPT_LIMIT) {
       return res.status(400).json({ error: `Prompt must be ${CUSTOM_SCENARIO_PROMPT_LIMIT} characters or fewer.` });
     }
-    if (!(await verifyPro(req.poiseUser))) {
+    // getState already re-verifies Pro when its cached verdict is stale
+    // (see energy.js), so this reuses that one row instead of a second,
+    // redundant verifyPro call -- and, unlike a bare verifyPro() check,
+    // also honors a redeemed judge code (is_judge on this same row): that
+    // account is meant to unlock everything the app gates on Pro, not just
+    // the energy cap, and a bare RevenueCat check has no idea it exists.
+    const energyRow = await getState(req.poiseUser, { verifyPro });
+    if (!energyRow.is_judge && !energyRow.is_pro) {
       return res.status(403).json({ error: "Custom scenarios are a Poise Pro feature." });
     }
 
@@ -223,6 +240,9 @@ app.post("/api/turn", rateLimit("turn", { limit: 50 }), async (req, res) => {
     const lesson = resolveLesson(req);
     if (!lesson) return res.status(404).json({ error: "Unknown or invalid lesson" });
     const { scenario, history, metCriteria, turnNumber, userResponse } = req.body;
+    if (typeof userResponse !== "string" || !userResponse.trim() || userResponse.length > MAX_USER_RESPONSE_LENGTH) {
+      return res.status(400).json({ error: `userResponse must be 1-${MAX_USER_RESPONSE_LENGTH} characters.` });
+    }
 
     // Energy is charged when the conversation starts -- turn 1 -- because
     // that is the moment tokens begin to be spent, whether or not the user
