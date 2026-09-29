@@ -12,8 +12,20 @@ struct CustomScenarioFlowView: View {
     // the real live lesson flow full-screen (same as every other lesson in
     // the app), rather than pushed as a NavigationStack destination, since
     // LiveLessonFlowView already manages its own full-screen chrome.
-    @State private var practiceLesson: EngineLessonSummary?
-    @State private var practiceScenario: EngineScenario?
+    //
+    // Lesson and scenario travel together as the cover's single item. They
+    // used to be two separate @State values, with the cover's closure
+    // reading practiceScenario on its own -- but that closure was evaluated
+    // once with practiceScenario still nil, and LiveLessonFlowView's
+    // @StateObject view model is only ever built from that first
+    // evaluation, so every custom lesson started with an empty briefing and
+    // no goals. Bundling them means the closure can only ever see both.
+    private struct Practice: Identifiable {
+        let lesson: EngineLessonSummary
+        let scenario: EngineScenario
+        var id: String { lesson.id }
+    }
+    @State private var practice: Practice?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -29,16 +41,22 @@ struct CustomScenarioFlowView: View {
                 switch route {
                 case .preview(let lesson, let scenario):
                     CustomScenarioPreviewView(lesson: lesson, scenario: scenario) { editedLesson, editedScenario in
-                        practiceLesson = editedLesson
-                        practiceScenario = editedScenario
+                        practice = Practice(lesson: editedLesson, scenario: editedScenario)
+                        OneSignalNotificationService.shared.recordCustomScenarioStarted(id: editedLesson.id)
                     }
                 }
             }
         }
         .tint(.poiseBlueDark)
-        .fullScreenCover(item: $practiceLesson) { lesson in
-            LiveLessonFlowView(customLesson: lesson, scenario: practiceScenario ?? EngineScenario(briefing: "", criteria: [])) { _ in
-                practiceLesson = nil
+        .fullScreenCover(item: $practice) { practice in
+            LiveLessonFlowView(customLesson: practice.lesson, scenario: practice.scenario) { completed in
+                // Only a real finish (reached the scorecard), not an early
+                // exit via the close button, counts as "completed" here --
+                // matches this Bool's meaning everywhere else it's used.
+                if completed {
+                    OneSignalNotificationService.shared.recordCustomScenarioCompleted(id: practice.lesson.id)
+                }
+                self.practice = nil
                 dismiss()
             }
         }

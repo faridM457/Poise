@@ -788,12 +788,40 @@ private struct SettingsToggleRow: View {
                 }
             }
         }
-        // The app's primary accent, not the system green -- switches are the
-        // only interactive control on this page and should match the CTA.
-        .tint(.poiseBlueDark)
+        .toggleStyle(PoiseSwitchToggleStyle())
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
         .accessibilityLabel(title)
+    }
+}
+
+// A custom switch, not `.toggleStyle(.switch)` with `.tint()` -- the native
+// switch style only lets you customize the ON color; its OFF track is a
+// fixed system gray with no exposed API to darken, which read as too low
+// contrast against this app's light backgrounds.
+private struct PoiseSwitchToggleStyle: ToggleStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: ToggleStyleConfiguration) -> some View {
+        HStack {
+            configuration.label
+            Spacer(minLength: 12)
+            Capsule()
+                .fill(configuration.isOn ? Color.poiseBlueDark : Color.poiseMuted.opacity(0.4))
+                .frame(width: 51, height: 31)
+                .overlay(alignment: configuration.isOn ? .trailing : .leading) {
+                    Circle()
+                        .fill(.white)
+                        .padding(2)
+                        .shadow(color: .black.opacity(0.15), radius: 1, y: 1)
+                }
+                .opacity(isEnabled ? 1 : 0.5)
+                .animation(.easeInOut(duration: 0.2), value: configuration.isOn)
+                .onTapGesture {
+                    guard isEnabled else { return }
+                    configuration.isOn.toggle()
+                }
+        }
     }
 }
 
@@ -998,6 +1026,7 @@ struct PaywallSheet: View {
             Text(subscriptions.isPro ? "You're on Poise Pro." : "Practice more, and on your own terms.")
                 .font(PoiseType.title())
                 .foregroundStyle(Color.poiseNavy)
+                .fixedSize(horizontal: false, vertical: true)
 
             Spacer().frame(height: 4)
 

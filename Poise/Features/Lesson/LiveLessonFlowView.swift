@@ -1,3 +1,4 @@
+import PoiseVoiceAnalysis
 import SwiftUI
 import os
 
@@ -428,7 +429,7 @@ private struct LiveGuideView: View {
                                 .frame(width: 38, height: 38)
 
                                 Text(criterion)
-                                    .font(PoiseType.body(.bold))
+                                    .font(PoiseType.body())
                                     .foregroundStyle(Color.poiseNavy)
                                     .fixedSize(horizontal: false, vertical: true)
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -569,6 +570,15 @@ private struct LiveRoleplayView: View {
     @Binding var characterMood: CharacterAnimationView.Mood
     let onReview: () -> Void
 
+    // Type or speak, never both for the same turn -- picking one starts that
+    // turn over clean (switchMode discards whatever the other mode had),
+    // rather than trying to keep a single composer consistent across a
+    // typed edit landing on top of a live dictation draft. That hybrid used
+    // to exist and was a real source of state bugs (stale recordings
+    // attaching to unrelated edited text); this removes the combination
+    // entirely instead of continuing to patch it.
+    enum InputMode { case text, voice }
+    @State private var inputMode: InputMode = .voice
     @State private var response = ""
     @FocusState private var isWriting: Bool
     @StateObject private var speech = SpeechRecognitionService()
@@ -593,6 +603,13 @@ private struct LiveRoleplayView: View {
     // see composerLocked below for why sending mid-reply must not be
     // allowed.
     @State private var npcIsSpeaking = true
+    // Whether the CURRENT line's word-by-word reveal has finished. Distinct
+    // from npcIsSpeaking -- that one no longer flips false the instant the
+    // reveal completes; both it and characterMood only flip once this AND
+    // viewModel.isAudioPlaying are both settled (see updateCharacterMoodIfIdle
+    // below), reset to false on every new line's onRevealStart so a stale
+    // true left over from the previous line can't fire it early.
+    @State private var revealComplete = false
 
     // Measured directly from an extracted frame of Idle_Neutral.mp4 (frame
     // 30, via ffmpeg) -- not a guess. Face occupies roughly 27%-51% of frame
@@ -699,6 +716,30 @@ private struct LiveRoleplayView: View {
                 onReview()
             }
         }
+        // The other half of updateCharacterMoodIfIdle's two signals -- see
+        // its doc below. Audio can keep playing after the text reveal has
+        // already finished (WordRevealText's timer is only an estimate), so
+        // this catches the moment real playback ends and re-checks whether
+        // it's now safe to show idle.
+        .onChange(of: viewModel.isAudioPlaying) { _, playing in
+            if !playing { updateCharacterMoodIfIdle() }
+        }
+    }
+
+    // The character (and the composer lock, via npcIsSpeaking) should only
+    // treat the NPC as done talking once BOTH the text has finished
+    // revealing AND the real audio has actually finished playing -- not
+    // just whichever of the two happens to finish first. WordRevealText's
+    // reveal timer is only an estimate of the real Pocket TTS clip's
+    // duration (see its own doc), so relying on it alone could (and did)
+    // show the character smiling/idle -- and unlock the composer -- while
+    // dialogue was still audibly playing. Called from both onRevealComplete
+    // below and the isAudioPlaying onChange above, whichever fires second.
+    private func updateCharacterMoodIfIdle() {
+        guard revealComplete, !viewModel.isAudioPlaying else { return }
+        characterMood = .idleNeutral
+        npcIsSpeaking = false
+        if viewModel.ended { finalMessageRevealed = true }
     }
 
     // Shows only the MOST RECENT line (not a scrolling transcript) so this
@@ -720,29 +761,51 @@ private struct LiveRoleplayView: View {
                             Text("View past dialogue")
                         }
                         .font(PoiseType.caption(.semibold))
-                        .foregroundStyle(.white.opacity(0.85))
+                        .foregroundStyle(.white.opacity(composerLocked ? 0.4 : 0.85))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                         .background(.black.opacity(0.3))
                         .clipShape(Capsule())
                     }
+                    // Locked for the same whole window the composer is --
+                    // npcIsSpeaking alone only covers once the reply has
+                    // actually started revealing, leaving the gap between
+                    // pressing Send and the reply arriving (the network
+                    // round trip plus synthesis) wide open, during which
+                    // opening the transcript to replay a recording could
+                    // still end up overlapping the NPC's line the instant
+                    // it starts. composerLocked already covers that whole
+                    // window (isSendingTurn/isSynthesizingSpeech/
+                    // npcIsSpeaking/isSubmitting).
+                    .disabled(composerLocked)
                     .accessibilityLabel("View past dialogue")
                 }
             }
 
             if let latest = viewModel.messages.last {
+                // Content-sized -- MessageBubble itself caps to 6 lines
+                // (see its own doc) instead of this call site trying to
+                // bound its height with a frame modifier, which in
+                // practice did not shrink to short content the way a
+                // plain Text does, and instead reserved a much taller
+                // block with the visible bubble pinned to one edge of it.
                 MessageBubble(
                     message: latest,
                     animateReveal: latest.speaker != .user,
                     speechDuration: viewModel.currentSpeechDuration,
                     onRevealStart: {
+                        revealComplete = false
                         characterMood = .talkNeutral
                         npcIsSpeaking = true
                     },
                     onRevealComplete: {
-                        characterMood = .idleNeutral
-                        npcIsSpeaking = false
-                        if viewModel.ended { finalMessageRevealed = true }
+                        revealComplete = true
+                        // Only actually flips mood/npcIsSpeaking to idle if
+                        // audio has also finished by now -- see
+                        // updateCharacterMoodIfIdle. If audio is still
+                        // playing, this is a no-op until the isAudioPlaying
+                        // onChange above fires.
+                        updateCharacterMoodIfIdle()
                     }
                 )
             }
@@ -768,38 +831,46 @@ private struct LiveRoleplayView: View {
                     .foregroundStyle(.white.opacity(0.85))
             }
 
-            HStack(alignment: .bottom, spacing: 10) {
-                TextField("Type or tap the mic to speak...", text: $response, axis: .vertical)
-                    .font(PoiseType.body())
-                    .foregroundStyle(Color.poiseNavy)
-                    .lineLimit(1...3)
-                    .padding(12)
-                    .background(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .focused($isWriting)
-                    .disabled(composerLocked)
-                    .accessibilityLabel("Typed response")
+            ComposerModeToggle(mode: $inputMode, disabled: composerLocked, onSwitch: switchMode)
 
-                // Fills the text field as the user speaks, live -- never
-                // sends automatically. The user reviews/edits before tapping
-                // send, same non-destructive pattern as the browser mic
-                // button in conversation-engine. Also suppresses NPC
-                // playback for the duration (setUserRecording) so the mic
-                // doesn't pick up the NPC's own voice over the speaker.
-                Button {
-                    viewModel.setUserRecording(true)
-                    speech.toggleListening()
-                    viewModel.setUserRecording(speech.isCapturing)
-                } label: {
-                    Image(systemName: speech.isListening ? "mic.fill" : "mic")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(speech.isListening ? .white : .white.opacity(0.85))
-                        .frame(width: 44, height: 44)
-                        .background(speech.isListening ? Color.red.opacity(0.85) : .white.opacity(0.18))
-                        .clipShape(Circle())
+            HStack(alignment: .bottom, spacing: 10) {
+                if inputMode == .text {
+                    TextField("Type your response...", text: $response, axis: .vertical)
+                        .font(PoiseType.body())
+                        .foregroundStyle(Color.poiseNavy)
+                        .lineLimit(1...3)
+                        .padding(12)
+                        .background(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .focused($isWriting)
+                        .disabled(composerLocked)
+                        .accessibilityLabel("Typed response")
+                } else {
+                    // Read-only, deliberately -- see InputMode's own doc.
+                    // The only way to change what this holds is to
+                    // re-record (tap the mic again, which discards and
+                    // starts over) or switch back to Text mode.
+                    VoiceTranscriptDisplay(speech: speech, response: response)
+
+                    // Fills `response` as the user speaks, live -- never
+                    // sends automatically. Also suppresses NPC playback for
+                    // the duration (setUserRecording) so the mic doesn't
+                    // pick up the NPC's own voice over the speaker.
+                    Button {
+                        viewModel.setUserRecording(true)
+                        speech.toggleListening()
+                        viewModel.setUserRecording(speech.isCapturing)
+                    } label: {
+                        Image(systemName: speech.isListening ? "mic.fill" : "mic")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(speech.isListening ? .white : .white.opacity(0.85))
+                            .frame(width: 44, height: 44)
+                            .background(speech.isListening ? Color.red.opacity(0.85) : .white.opacity(0.18))
+                            .clipShape(Circle())
+                    }
+                    .disabled(composerLocked || speech.isFinalizing || speech.isFinishingTranscript)
+                    .accessibilityLabel(speech.isListening ? "Stop dictating" : "Speak your response")
                 }
-                .disabled(composerLocked || speech.isFinalizing)
-                .accessibilityLabel(speech.isListening ? "Stop dictating" : "Speak your response")
 
                 Button(action: sendResponse) {
                     Image(systemName: "arrow.up.circle.fill")
@@ -817,13 +888,22 @@ private struct LiveRoleplayView: View {
         .onChange(of: speech.isListening) { _, listening in
             if listening { response = "" }
         }
+        // Matches the server's own MAX_USER_RESPONSE_LENGTH (server/index.js)
+        // -- typed input had no length limit anywhere, client or server,
+        // before this. Truncating here (rather than only rejecting server
+        // side after a real network round trip) keeps a pasted wall of text
+        // from ever being sent in the first place.
+        .onChange(of: response) { _, newValue in
+            guard newValue.count > 1500 else { return }
+            response = String(newValue.prefix(1500))
+        }
         .onChange(of: speech.isCapturing) { _, recording in viewModel.setUserRecording(recording) }
         .onDisappear {
             speech.discardDraft()
             viewModel.setUserRecording(false)
         }
         .sheet(isPresented: $showTranscript) {
-            ConversationTranscriptSheet(messages: viewModel.messages, characterName: viewModel.character?.name)
+            ConversationTranscriptSheet(messages: viewModel.messages, characterName: viewModel.character?.name, voiceSession: viewModel.voiceSession)
         }
         .padding(.horizontal, 20)
         .padding(.top, 20)
@@ -851,17 +931,46 @@ private struct LiveRoleplayView: View {
     // otherwise send a reply the NPC hadn't finished delivering yet, talking
     // over them mid-sentence.
     private var composerLocked: Bool {
-        viewModel.isSendingTurn || viewModel.isSynthesizingSpeech || npcIsSpeaking || isSubmitting
+        // viewModel.ended, not just the three in-flight-turn flags above --
+        // once the conversation has concluded (all criteria met, a severe
+        // flag, or the turn cap), there's a real window between the final
+        // reply finishing its reveal and onReview() actually transitioning
+        // to the scorecard (the deliberate 2.2s beat below, so the user has
+        // time to read that last line) where none of the other three flags
+        // are true any more, leaving the mic/send/mode buttons live for a
+        // conversation that's already over.
+        viewModel.isSendingTurn || viewModel.isSynthesizingSpeech || npcIsSpeaking || isSubmitting || viewModel.ended
     }
 
     private var sendDisabled: Bool {
+        // Not while recording or while the transcriber is still finalizing
+        // the last stretch of speech -- until then the end of the text can
+        // be a half-word guess, and that's what would get sent.
         response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || composerLocked || speech.isStarting
+            || speech.isListening || speech.isFinishingTranscript
+    }
+
+    // Discards whatever the OTHER mode was holding -- a typed draft, or a
+    // dictated one -- so each mode always starts clean rather than trying
+    // to reconcile leftover state from the one just left.
+    private func switchMode(_ mode: InputMode) {
+        guard mode != inputMode else { return }
+        speech.discardDraft()
+        viewModel.setUserRecording(false)
+        response = ""
+        inputMode = mode
     }
 
     private func sendResponse() {
         let trimmed = response
         isSubmitting = true
         isWriting = false
+        // Cleared synchronously, before the round trip -- the user should
+        // see the field empty the instant they tap Send, not after
+        // sendUserResponse's network call resolves. Restored in the else
+        // branch below if the send actually fails, so a failure doesn't
+        // silently lose what they typed.
+        response = ""
         Task {
             // Seals whatever recording was in progress (or already
             // finished) into a VoiceTurnInput -- .typed if none was ever
@@ -870,11 +979,72 @@ private struct LiveRoleplayView: View {
             let input = await speech.finalizedInput()
             viewModel.setUserRecording(false)
             if await viewModel.sendUserResponse(trimmed, voiceInput: input) {
-                response = ""
                 speech.discardDraft()
+            } else {
+                response = trimmed
             }
             isSubmitting = false
         }
+    }
+}
+
+// Two mutually exclusive ways to answer -- type, or speak -- rather than one
+// composer that tries to accept both at once (see LiveRoleplayView.InputMode).
+private struct ComposerModeToggle: View {
+    @Binding var mode: LiveRoleplayView.InputMode
+    let disabled: Bool
+    let onSwitch: (LiveRoleplayView.InputMode) -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            modeButton(.text, title: "Type", icon: "keyboard")
+            modeButton(.voice, title: "Speak", icon: "mic.fill")
+        }
+    }
+
+    private func modeButton(_ target: LiveRoleplayView.InputMode, title: String, icon: String) -> some View {
+        let isSelected = mode == target
+        return Button {
+            onSwitch(target)
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: icon).font(.system(size: 11, weight: .semibold))
+                Text(title).font(PoiseType.caption(.semibold))
+            }
+            .foregroundStyle(isSelected ? Color.poiseNavy : .white.opacity(0.85))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(isSelected ? Color.white : .white.opacity(0.18))
+            .clipShape(Capsule())
+        }
+        .disabled(disabled)
+        .accessibilityLabel("\(title) response")
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+}
+
+// The Speak-mode transcript, read-only -- see LiveRoleplayView.InputMode's
+// own doc for why this never accepts manual edits: the only way to change
+// what it holds is to re-record or switch to Type mode.
+private struct VoiceTranscriptDisplay: View {
+    @ObservedObject var speech: SpeechRecognitionService
+    let response: String
+
+    private var placeholder: String {
+        if speech.isListening { return "Listening..." }
+        if speech.isFinalizing { return "Finishing up..." }
+        return "Tap the mic to speak..."
+    }
+
+    var body: some View {
+        Text(response.isEmpty ? placeholder : response)
+            .font(PoiseType.body())
+            .foregroundStyle(response.isEmpty ? Color.poiseMuted : Color.poiseNavy)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(.white)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .accessibilityLabel(response.isEmpty ? placeholder : "Transcribed response: \(response)")
     }
 }
 
@@ -885,7 +1055,13 @@ private struct LiveRoleplayView: View {
 private struct ConversationTranscriptSheet: View {
     let messages: [ConversationMessage]
     let characterName: String?
+    // Passed in rather than looked up globally -- recordings are only
+    // retained for the lesson currently in progress (see
+    // VoiceConversationSession.recordedClips), and this sheet always opens
+    // from within that same lesson's flow.
+    let voiceSession: VoiceConversationSession
     @Environment(\.dismiss) private var dismiss
+    @StateObject private var player = VoiceClipPlayer()
 
     var body: some View {
         NavigationStack {
@@ -893,8 +1069,17 @@ private struct ConversationTranscriptSheet: View {
                 ScrollView {
                     VStack(spacing: 12) {
                         ForEach(messages) { message in
-                            MessageBubble(message: message)
-                                .id(message.id)
+                            VStack(alignment: message.speaker == .user ? .trailing : .leading, spacing: 6) {
+                                MessageBubble(message: message)
+                                // Only ever set for the user's own turns (see
+                                // VoiceConversationSession.recordingURL) --
+                                // this naturally never shows on NPC lines.
+                                if let url = voiceSession.recordingURL(forTurnID: message.id.uuidString) {
+                                    ReplayRecordingButton(url: url, player: player)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: message.speaker == .user ? .trailing : .leading)
+                            .id(message.id)
                         }
                     }
                     .padding(20)
@@ -914,6 +1099,52 @@ private struct ConversationTranscriptSheet: View {
                 }
             }
         }
+        // The sheet, not the whole lesson, owns this player's lifetime --
+        // stop on dismiss so audio never keeps playing behind a closed sheet.
+        .onDisappear { player.stop() }
+    }
+}
+
+// "Hear it back" for one of the user's own recorded turns -- addresses the
+// otherwise reasonable assumption that recording your voice for delivery
+// analysis would let you replay it, which it didn't until this button
+// existed (see VoiceRecordingWriter/VoiceConversationSession's retention).
+private struct ReplayRecordingButton: View {
+    let url: URL
+    @ObservedObject var player: VoiceClipPlayer
+
+    private var isPlaying: Bool { player.playingURL == url }
+
+    // "0:13 / 0:59" while playing, ticking every quarter second (see
+    // VoiceClipPlayer.tick) -- the normal transport readout, not a bare
+    // play/stop toggle with no sense of how far along or how long it is.
+    private var label: String {
+        guard isPlaying else { return "Play your recording" }
+        return "\(player.currentTime.voiceClipTimestamp) / \(player.duration.voiceClipTimestamp)"
+    }
+
+    var body: some View {
+        Button {
+            player.toggle(url)
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: isPlaying ? "stop.fill" : "play.fill")
+                    .font(.system(size: 10, weight: .bold))
+                Text(label)
+                    // Digits reflow at a fixed width each tick otherwise --
+                    // "0:9" is narrower than "0:10" -- which visibly jitters
+                    // the pill's width once a second.
+                    .monospacedDigit()
+            }
+            .font(PoiseType.caption(.semibold))
+            .foregroundStyle(Color.poiseBlueDark)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Color.poiseBlueDark.opacity(0.13))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isPlaying ? "Stop playback, \(label) elapsed" : "Play back your recorded response")
     }
 }
 
@@ -958,6 +1189,17 @@ private struct LiveScorecardView: View {
                         SkillScoreCard(feedback: feedback)
                     } else {
                         ChecklistResultCard(feedback: feedback)
+                    }
+
+                    // Specific measured numbers behind the Delivery
+                    // level/note above -- reads voicePayload directly
+                    // (on-device, conversation-level aggregates) rather than
+                    // anything the server sent, since the server only ever
+                    // returns one coarse level + note for delivery, never
+                    // the underlying pace/pitch/filler measurements.
+                    if feedback.skillLevels[.delivery] != nil,
+                       let rows = VoiceDeliveryMetrics.rows(from: viewModel.voicePayload) {
+                        DeliveryMetricsCard(rows: rows)
                     }
 
                     // Was the last block on this screen still wearing the
@@ -1095,6 +1337,62 @@ private struct SkillResultRow: View {
     }
 }
 
+// The specific measurements behind the Delivery grade -- pace, pitch
+// variation, filler rate -- each with the same provisional target band the
+// per-turn scorer already states in its own feedback strings (see
+// voice-analysis/src/scoring.js). Deliberately plain, measured language, not
+// coaching copy: this is supporting evidence for the level/note above it,
+// not a second verdict, and (per the voice-analysis payload's own trusted
+// guidance) never implies anything about confidence, emotion, or ability
+// from pitch.
+private struct DeliveryMetricsCard: View {
+    let rows: [VoiceDeliveryMetricRow]
+
+    var body: some View {
+        PoiseSection(title: "Delivery, measured") {
+            PoiseSurfaceCard(padding: 0) {
+                VStack(spacing: 0) {
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                        if index > 0 {
+                            PoiseDivider().padding(.leading, 68)
+                        }
+                        DeliveryMetricRowView(row: row)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct DeliveryMetricRowView: View {
+    let row: VoiceDeliveryMetricRow
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            PoiseIconBadge(icon: row.icon, color: .poiseGold)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(row.title)
+                    .font(PoiseType.body(.bold))
+                    .foregroundStyle(Color.poiseNavy)
+                Text(row.valueText)
+                    .font(PoiseType.caption(.semibold))
+                    .foregroundStyle(row.isAvailable ? Color.poiseNavy.opacity(0.85) : Color.poiseMuted)
+                Text(row.detailText)
+                    .font(PoiseType.caption())
+                    .foregroundStyle(Color.poiseMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        // Full width, leading -- the card's VStack centers any row narrower
+        // than itself, so a row with shorter text sat visibly further right.
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+    }
+}
+
 // A regular lesson's result, built from exactly the same parts as
 // SkillScoreCard -- same section eyebrow, same surface, same hairline rows,
 // same chip -- so the two scorecards read as one screen rather than two
@@ -1109,13 +1407,27 @@ private struct ChecklistResultCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             PoiseSection(title: "How it went") {
-                PoiseSurfaceCard(padding: 0) {
-                    VStack(spacing: 0) {
-                        ForEach(Array(feedback.checklist.enumerated()), id: \.element.id) { index, item in
-                            if index > 0 {
-                                PoiseDivider().padding(.leading, 68)
+                VStack(spacing: 10) {
+                    PoiseSurfaceCard(padding: 0) {
+                        VStack(spacing: 0) {
+                            ForEach(Array(feedback.checklist.enumerated()), id: \.element.id) { index, item in
+                                if index > 0 {
+                                    PoiseDivider().padding(.leading, 68)
+                                }
+                                ChecklistResultRow(number: index + 1, item: item)
                             }
-                            ChecklistResultRow(number: index + 1, item: item)
+                        }
+                    }
+
+                    // A regular lesson's checklist has no room for a fourth,
+                    // differently-shaped criterion, so Delivery (when graded)
+                    // gets its own card here instead of a row in the list
+                    // above -- same SkillResultRow a checkpoint's
+                    // SkillScoreCard uses, so it reads as the same kind of
+                    // judgment as it does there.
+                    if let deliveryLevel = feedback.skillLevels[.delivery] {
+                        PoiseSurfaceCard(padding: 0) {
+                            SkillResultRow(skill: .delivery, level: deliveryLevel, note: feedback.note(for: .delivery))
                         }
                     }
                 }
@@ -1139,11 +1451,13 @@ private struct ChecklistResultRow: View {
     private var tint: Color { item.met ? .poiseMintDark : .poiseGold }
 
     var body: some View {
-        // .center, not .top -- see the guide screen's identical fix (same
-        // fixed-size-badge-next-to-variable-line-text shape): with .top, a
-        // one-line criterion sat at the top of the row instead of centered
-        // against the badge and the pill.
-        HStack(alignment: .center, spacing: 14) {
+        // .top, matching DeliveryMetricRowView's own shape -- the criterion
+        // moved from a single bold line next to the badge into a
+        // heading ("Criteria N") + body-text pair, the same
+        // heading-then-detail pattern the Delivery section already uses,
+        // so the two cards read as one consistent format rather than two
+        // different ones on the same scorecard.
+        HStack(alignment: .top, spacing: 14) {
             ZStack {
                 RoundedRectangle(cornerRadius: 38 * 0.3, style: .continuous)
                     .fill(tint.opacity(0.13))
@@ -1158,11 +1472,16 @@ private struct ChecklistResultRow: View {
             }
             .frame(width: 38, height: 38)
 
-            Text(item.criterion)
-                .font(PoiseType.body(.bold))
-                .foregroundStyle(Color.poiseNavy)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Criteria \(number)")
+                    .font(PoiseType.body(.bold))
+                    .foregroundStyle(Color.poiseNavy)
+                Text(item.criterion)
+                    .font(PoiseType.caption())
+                    .foregroundStyle(Color.poiseMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             PoiseEyebrow(text: item.met ? "Met" : "Not yet", color: tint)
                 .padding(.horizontal, 10)

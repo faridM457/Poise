@@ -56,6 +56,15 @@ struct MessageBubble: View {
                         .foregroundStyle(message.speaker == .user ? Color.white : Color.poiseNavy)
                 }
             }
+                // Bounds height the reliable way -- a line count SwiftUI
+                // sizes to directly, with no ambiguity about whether a
+                // surrounding frame actually shrinks to short content or
+                // reserves its max regardless (a maxHeight-based cap on
+                // this bubble was tried in the live roleplay panel and, in
+                // practice, did the latter -- the visible bubble sat
+                // pinned to one edge of a much taller reserved block,
+                // leaving a large empty gap on the other side of it).
+                .lineLimit(6)
                 .padding(18)
                 .background(message.speaker == .user ? Color.poiseBlue : Color.white)
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))

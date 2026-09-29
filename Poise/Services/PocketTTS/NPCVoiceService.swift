@@ -25,6 +25,17 @@ final class NPCVoiceService: NSObject {
     private var loadTask: Task<PocketTTSSwift, Error>?
     private var player: AVAudioPlayer?
     private var playerDelegate: AudioPlayerCompletionDelegate?
+    // Fired exactly once per prepare()'d clip, by whichever happens first:
+    // the player finishing naturally (via the delegate below) or stop()
+    // halting it early. This is the one place that actually knows when
+    // audio is done, which callers (LiveLessonViewModel) use as the real
+    // "audio actually finished" signal for driving the character's
+    // talk/idle mood, instead of only approximating it from WordRevealText's
+    // text-reveal timer. stop() must also resolve this, not just natural
+    // completion, or a caller waiting on it could hang forever once
+    // playback is interrupted (screen closing, the user starting to record,
+    // or a new line pre-empting this one) rather than left to finish.
+    private var playbackFinishedHandler: (() -> Void)?
 
     /// Synthesizes `text` in the given voice (see CharacterAppearance.voiceIndex).
     /// Loads the model lazily on first call (staging bundle resources into a
@@ -44,7 +55,7 @@ final class NPCVoiceService: NSObject {
     /// had a perceptible startup lag that showed up as the word-reveal
     /// visibly starting before any sound did. Returns `false` (never throws)
     /// on failure, since TTS playback is additive, not load-bearing.
-    func prepare(_ audioData: Data) -> Bool {
+    func prepare(_ audioData: Data, onPlaybackFinished: (() -> Void)? = nil) -> Bool {
         do {
             let session = AVAudioSession.sharedInstance()
             // Deactivate before changing category rather than switching an
@@ -70,11 +81,15 @@ final class NPCVoiceService: NSObject {
                 // conflict this fix is closing, just shifted from "stop()
                 // never deactivates" to "natural completion never does".
                 try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+                let handler = self?.playbackFinishedHandler
+                self?.playbackFinishedHandler = nil
+                handler?()
             }
             newPlayer.delegate = delegate
             newPlayer.prepareToPlay()
             playerDelegate = delegate
             player = newPlayer
+            playbackFinishedHandler = onPlaybackFinished
             return true
         } catch {
             print("[NPCVoiceService] Prepare failed: \(error)")
@@ -99,6 +114,14 @@ final class NPCVoiceService: NSObject {
         // mid-line) skips that callback entirely, so it has to happen here
         // too or the session is left active in .playback indefinitely.
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        // Same reasoning: an interrupted stop also skips the delegate's own
+        // completion callback, so it has to resolve playbackFinishedHandler
+        // here too, or a caller combining this with the text-reveal signal
+        // (see LiveLessonViewModel/LiveRoleplayView) would wait forever for
+        // an "audio finished" signal that natural completion never sends.
+        let handler = playbackFinishedHandler
+        playbackFinishedHandler = nil
+        handler?()
     }
 
     private func loadedEngine() async throws -> PocketTTSSwift {

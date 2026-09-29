@@ -109,7 +109,7 @@ struct LearnView: View {
             // section; without one this card had nothing to visually detach
             // it from the weekly card above, and it read as more content
             // under "THIS WEEK" instead of a separate feature.
-            PoiseSection(title: "More ways to practice", showsRule: true) {
+            PoiseSection(title: "Custom Practice", showsRule: true) {
                 CustomScenarioCard(action: openCustomScenario)
             }
 
@@ -152,7 +152,15 @@ struct LearnView: View {
     }
 
     private func openCustomScenario() {
-        if subscriptions.isPro {
+        // A redeemed judge code (see energy.js: redeemJudgeCode) only ever
+        // touched the server-side energy ledger -- SubscriptionStore.isPro
+        // is RevenueCat's own verdict and has no idea a judge code exists,
+        // so a judge account could unlock effectively unlimited energy and
+        // still hit this one Pro-only paywall. Custom Scenario is the only
+        // feature (not just a monetization/subscription-management screen)
+        // actually gated on isPro, so this is the one place that needs the
+        // judge override, not a broader SubscriptionStore change.
+        if subscriptions.isPro || store.isJudge {
             showCustomScenario = true
         } else {
             showPaywall = true
@@ -274,7 +282,11 @@ private struct UpNextCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .topLeading) {
-                HeroCharacterBanner()
+                // The lesson's character is known statically (see
+                // LessonNode.character's own doc comment) specifically so
+                // this preview can show the right person -- falls back to
+                // char1 only for the no-upcoming-lesson empty state.
+                HeroCharacterBanner(appearance: upNext?.lesson.character?.appearance ?? .char1)
                     .frame(height: Self.bannerHeight)
                     .clipped()
 
@@ -355,10 +367,12 @@ private struct UpNextCard: View {
 // width, clipped only by the card's own corner radius (top corners; the
 // bottom edge butts against bottomContent, no rounding needed there).
 private struct HeroCharacterBanner: View {
+    let appearance: CharacterAppearance
+
     var body: some View {
         Color.clear
             .overlay {
-                Image(uiImage: CharacterCrops.heroBanner ?? UIImage())
+                Image(uiImage: CharacterCrops.heroBanner(for: appearance) ?? UIImage())
                     .resizable()
                     .scaledToFill()
             }
@@ -828,13 +842,22 @@ private enum CharacterCrops {
     // ceiling above the hair (22.8%) and cut off too soon above the chin
     // (50%) -- top: 0.17 trims most of that headroom and bottom: 0.71 shows
     // shoulders/chest instead of stopping right at the chin.
-    static var heroBanner: UIImage? {
-        crop(key: "heroBanner", top: 0.17, bottom: 0.71, aspect: 350.0 / 175.0)
+    //
+    // These fractions were measured against CharFullFrame specifically, but
+    // Char2FullFrame/Char3FullFrame render the same character-at-a-desk
+    // composition (same room, same seat position, same camera framing --
+    // confirmed by inspecting all three source assets), just with a
+    // different overall canvas size/aspect and a different person in the
+    // chair, so the same relative top/bottom/faceCenterX fractions land
+    // correctly on any of the three.
+    static func heroBanner(for appearance: CharacterAppearance) -> UIImage? {
+        crop(key: "heroBanner_\(appearance.rawValue)", assetName: appearance.stillImageName,
+             top: 0.17, bottom: 0.71, aspect: 350.0 / 175.0)
     }
 
-    private static func crop(key: String, top: CGFloat, bottom: CGFloat, aspect: CGFloat) -> UIImage? {
+    private static func crop(key: String, assetName: String, top: CGFloat, bottom: CGFloat, aspect: CGFloat) -> UIImage? {
         if let cached = cache[key] { return cached }
-        guard let source = UIImage(named: "CharFullFrame"), let cgImage = source.cgImage else { return nil }
+        guard let source = UIImage(named: assetName), let cgImage = source.cgImage else { return nil }
         let width = CGFloat(cgImage.width)
         let height = CGFloat(cgImage.height)
         let cropHeight = (bottom - top) * height

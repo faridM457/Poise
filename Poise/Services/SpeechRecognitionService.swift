@@ -25,19 +25,40 @@ final class SpeechRecognitionService: NSObject, ObservableObject {
     @Published private(set) var isListening = false
     @Published private(set) var isStarting = false
     @Published private(set) var isFinalizing = false
+    // True between stopping the mic and the transcriber delivering its final
+    // text for the last stretch of speech. SpeechTranscriber only finalizes a
+    // stretch once it hears what comes after it, so until then the tail of
+    // the last sentence can still be a half-word guess ("I wanted to ta").
+    @Published private(set) var isFinishingTranscript = false
+    // Identifies the take whose results may still update `transcript`.
+    // Separate from captureID, which stopListening resets immediately --
+    // results for the take being finished must keep arriving after that.
+    private var resultsTake = UUID()
     @Published var transcript = ""
     @Published var errorMessage: String?
 
-    private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
+    // Live text comes from SpeechAnalyzer + SpeechTranscriber, not
+    // SFSpeechRecognizer. SFSpeechRecognizer's dictation (like
+    // DictationTranscriber) strips "um"/"uh" with no option to keep them;
+    // SpeechTranscriber keeps them, which matters here because the user is
+    // practicing delivery and should see their own fillers. Same on-device
+    // model the voice analysis already runs on the saved recording.
     private let audioEngine = AVAudioEngine()
-    private var request: SFSpeechAudioBufferRecognitionRequest?
-    private var task: SFSpeechRecognitionTask?
+    private var analyzer: SpeechAnalyzer?
+    private var inputContinuation: AsyncStream<AnalyzerInput>.Continuation?
+    private var resultsTask: Task<Void, Never>?
     private var writer: VoiceRecordingWriter?
     private var finalization: Task<VoiceTurnInput, Never>?
     private var draft: VoiceTurnInput = .typed
     private var captureID = UUID()
     private var draftID = UUID()
     private var observers = Set<AnyCancellable>()
+    // SpeechTranscriber reports each stretch of speech as volatile guesses
+    // followed by one finalized result. Finalized stretches accumulate here
+    // and the current volatile guess is appended for display, so a pause
+    // never drops what came before it.
+    private var finalizedText = ""
+    private var volatileText = ""
     var isCapturing: Bool { isListening || isStarting || isFinalizing }
 
     override init() {
@@ -114,12 +135,24 @@ final class SpeechRecognitionService: NSObject, ObservableObject {
             return
         }
 
-        guard let recognizer, recognizer.isAvailable, recognizer.supportsOnDeviceRecognition else {
+        guard SpeechTranscriber.isAvailable,
+              let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: "en-US")) else {
             errorMessage = ServiceError.recognizerUnavailable.localizedDescription
             return
         }
 
         do {
+            let transcriber = SpeechTranscriber(
+                locale: locale,
+                transcriptionOptions: [],
+                reportingOptions: [.volatileResults, .fastResults],
+                attributeOptions: []
+            )
+            if let installation = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
+                try await installation.downloadAndInstall()
+            }
+            guard captureID == id, isStarting else { return }
+
             let session = AVAudioSession.sharedInstance()
             // Same reasoning as NPCVoiceService.prepare(): don't assume the
             // session is idle just because this service last deactivated it
@@ -135,16 +168,21 @@ final class SpeechRecognitionService: NSObject, ObservableObject {
             let format = inputNode.outputFormat(forBus: 0)
             let recording = try VoiceRecordingWriter(format: format)
             writer = recording
-            let newRequest = SFSpeechAudioBufferRecognitionRequest()
-            newRequest.shouldReportPartialResults = true
-            newRequest.taskHint = .dictation
-            newRequest.requiresOnDeviceRecognition = true
-            request = newRequest
+            let analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(
+                compatibleWith: [transcriber], considering: format
+            ) ?? format
+            let converter = AnalyzerBufferConverter(from: format, to: analyzerFormat)
+            let (inputStream, continuation) = AsyncStream.makeStream(of: AnalyzerInput.self)
+            inputContinuation = continuation
+            let newAnalyzer = SpeechAnalyzer(modules: [transcriber])
+            analyzer = newAnalyzer
             inputNode.removeTap(onBus: 0)
             // Capture immutable per-take references; never read main-actor state at the tap.
             inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
                 if recording.append(buffer) {
-                    newRequest.append(buffer)
+                    if let converted = converter.convert(buffer) {
+                        continuation.yield(AnalyzerInput(buffer: converted))
+                    }
                 } else {
                     Task { @MainActor in
                         guard let self, self.captureID == id else { return }
@@ -158,25 +196,43 @@ final class SpeechRecognitionService: NSObject, ObservableObject {
             try audioEngine.start()
 
             transcript = ""
+            finalizedText = ""
+            volatileText = ""
             isListening = true
+            let take = UUID()
+            resultsTake = take
 
-            task = recognizer.recognitionTask(with: newRequest) { [weak self] result, error in
-                let text = result?.bestTranscription.formattedString
-                let final = result?.isFinal == true
-                let failed = error != nil
-                Task { @MainActor in
+            resultsTask = Task { [weak self] in
+                do {
+                    for try await result in transcriber.results {
+                        guard let self, self.resultsTake == take else { return }
+                        self.absorb(String(result.text.characters), isFinal: result.isFinal)
+                    }
+                } catch {
                     guard let self, self.captureID == id, self.isListening else { return }
-                    if let text { self.transcript = text }
-                    if failed {
-                        self.errorMessage = "Live dictation stopped. You can edit the text before sending."
-                        self.stopListening()
-                    } else if final { self.stopListening() }
+                    self.errorMessage = "Live dictation stopped. You can edit the text before sending."
+                    self.stopListening()
                 }
             }
+            try await newAnalyzer.start(inputSequence: inputStream)
         } catch {
+            guard captureID == id else { return }
             errorMessage = "Recording could not start. You can still type your response."
             stopListening(failure: .invalidAudio)
         }
+    }
+
+    private func absorb(_ text: String, isFinal: Bool) {
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if isFinal {
+            if !cleaned.isEmpty {
+                finalizedText = finalizedText.isEmpty ? cleaned : finalizedText + " " + cleaned
+            }
+            volatileText = ""
+        } else {
+            volatileText = cleaned
+        }
+        transcript = [finalizedText, volatileText].filter { !$0.isEmpty }.joined(separator: " ")
     }
 
     func stopListening(failure: VoiceTurnFailure? = nil) {
@@ -187,10 +243,35 @@ final class SpeechRecognitionService: NSObject, ObservableObject {
             audioEngine.stop()
             audioEngine.inputNode.removeTap(onBus: 0)
         }
-        request?.endAudio()
-        task?.cancel()
-        task = nil
-        request = nil
+        inputContinuation?.finish()
+        inputContinuation = nil
+        let pendingResults = resultsTask
+        resultsTask = nil
+        if let analyzer {
+            self.analyzer = nil
+            if failure == nil {
+                // Finish instead of cancel, so the last stretch of speech gets
+                // its finalized text. Bounded, so a transcriber that never
+                // finishes can't leave Send disabled forever.
+                let take = resultsTake
+                isFinishingTranscript = true
+                Task { [weak self] in
+                    try? await analyzer.finalizeAndFinishThroughEndOfInput()
+                    _ = await pendingResults?.value
+                    if let self, self.resultsTake == take { self.isFinishingTranscript = false }
+                }
+                Task { [weak self] in
+                    try? await Task.sleep(nanoseconds: 4_000_000_000)
+                    guard let self, self.resultsTake == take, self.isFinishingTranscript else { return }
+                    self.isFinishingTranscript = false
+                    await analyzer.cancelAndFinishNow()
+                }
+            } else {
+                resultsTake = UUID()
+                pendingResults?.cancel()
+                Task { await analyzer.cancelAndFinishNow() }
+            }
+        }
         if let recording = writer {
             writer = nil
             isFinalizing = true
@@ -221,10 +302,45 @@ final class SpeechRecognitionService: NSObject, ObservableObject {
 
     func discardDraft() {
         stopListening()
+        // Stop any in-flight finalization from writing this take's text back
+        // into a transcript the user just cleared.
+        resultsTake = UUID()
+        isFinishingTranscript = false
         draftID = UUID()
         finalization = nil
         draft = .typed
         isFinalizing = false
         transcript = ""
+    }
+}
+
+// Converts mic tap buffers into the format SpeechAnalyzer wants. Runs on the
+// audio thread inside the tap, so it only touches its own immutable state.
+private final class AnalyzerBufferConverter: @unchecked Sendable {
+    private let converter: AVAudioConverter?
+    private let target: AVAudioFormat
+
+    init(from source: AVAudioFormat, to target: AVAudioFormat) {
+        self.target = target
+        converter = source == target ? nil : AVAudioConverter(from: source, to: target)
+    }
+
+    func convert(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        guard let converter else { return buffer }
+        let ratio = target.sampleRate / buffer.format.sampleRate
+        let capacity = AVAudioFrameCount((Double(buffer.frameLength) * ratio).rounded(.up)) + 1
+        guard let output = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity) else { return nil }
+        var supplied = false
+        var error: NSError?
+        converter.convert(to: output, error: &error) { _, status in
+            if supplied {
+                status.pointee = .noDataNow
+                return nil
+            }
+            supplied = true
+            status.pointee = .haveData
+            return buffer
+        }
+        return error == nil && output.frameLength > 0 ? output : nil
     }
 }

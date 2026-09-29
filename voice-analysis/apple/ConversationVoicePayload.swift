@@ -192,7 +192,7 @@ private struct ConversationClip: Decodable {
             let start: Double
             let end: Double
             var isFiller: Bool {
-                ["um", "uh"].contains(text.lowercased().trimmingCharacters(in: .punctuationCharacters))
+                ["um", "uh", "ah"].contains(text.lowercased().trimmingCharacters(in: .punctuationCharacters))
             }
         }
         let words: [Word]

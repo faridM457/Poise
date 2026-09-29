@@ -282,29 +282,38 @@ private struct OnboardingWeeklyGoalStepper: View {
     }
 
     var body: some View {
-        HStack {
+        // A label row above a value+stepper row, not one HStack with all
+        // three -- cramming "Weekly goal", the value text, and the stepper
+        // into a single row left nothing to stop the value text wrapping to
+        // a second line once the row got tight (long value text + a fixed-
+        // width Stepper competing for the same space). Splitting them onto
+        // their own rows removes the squeeze entirely instead of shrinking
+        // or truncating the text.
+        VStack(alignment: .leading, spacing: 10) {
             Text("Weekly goal")
                 .font(PoiseType.body(.bold))
                 .foregroundStyle(Color.poiseNavy)
-            Spacer(minLength: 12)
-            Text(valueText)
-                .font(PoiseType.subhead(.semibold))
-                .foregroundStyle(Color.poiseMuted)
-            // The only way weeklyGoal changes -- see
-            // LearnProgressStore.setWeeklyGoal, which clamps to
-            // 1...maxWeeklyGoal so this can never push it out of bounds.
-            Stepper(
-                "",
-                value: Binding(
-                    get: { store.weeklyGoal },
-                    set: { store.setWeeklyGoal($0) }
-                ),
-                in: 1...store.maxWeeklyGoal
-            )
-            .labelsHidden()
-            .tint(.poiseBlueDark)
-            .accessibilityLabel("Weekly goal")
-            .accessibilityValue(valueText)
+            HStack {
+                Text(valueText)
+                    .font(PoiseType.subhead(.semibold))
+                    .foregroundStyle(Color.poiseMuted)
+                Spacer(minLength: 12)
+                // The only way weeklyGoal changes -- see
+                // LearnProgressStore.setWeeklyGoal, which clamps to
+                // 1...maxWeeklyGoal so this can never push it out of bounds.
+                Stepper(
+                    "",
+                    value: Binding(
+                        get: { store.weeklyGoal },
+                        set: { store.setWeeklyGoal($0) }
+                    ),
+                    in: 1...store.maxWeeklyGoal
+                )
+                .labelsHidden()
+                .tint(.poiseBlueDark)
+                .accessibilityLabel("Weekly goal")
+                .accessibilityValue(valueText)
+            }
         }
         .padding(16)
         .poiseCard(radius: 18)

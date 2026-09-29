@@ -35,6 +35,13 @@ public final class VoiceConversationSession: ObservableObject {
     private var worker: Task<Void, Never>?
     private let analyze: @Sendable (URL) async throws -> VoiceAnalysisReport
     private var recordingSeconds = 0.0
+    // Retained past analysis so a caller can offer playback of what the user
+    // actually said -- otherwise each RecordedVoiceClip's deinit deletes its
+    // temp file the moment `drain()`'s loop body releases the last strong
+    // reference to it. Cleared by releaseRecordings() once the caller is
+    // done (e.g. the scorecard is dismissed); also drops with this object's
+    // own deinit if that's never called explicitly.
+    private var recordedClips: [String: RecordedVoiceClip] = [:]
 
     public convenience init(conversationID: String = UUID().uuidString) {
         let analyzer = OnDeviceVoiceAnalyzer()
@@ -104,6 +111,22 @@ public final class VoiceConversationSession: ObservableObject {
         // The active job owns its clip until the analyzer has finished cleanup.
     }
 
+    /// The turn's recorded audio, still on disk, for playback. Available for
+    /// any turn whose recording made it through `drain()` -- regardless of
+    /// whether analysis itself succeeded -- until `releaseRecordings()` is
+    /// called or this session is deallocated.
+    public func recordingURL(forTurnID id: String) -> URL? {
+        recordedClips[id]?.fileURL
+    }
+
+    /// Deletes every retained recording's temp file (via each RecordedVoiceClip's
+    /// own deinit) and drops this session's references to them. Call once the
+    /// caller no longer needs playback -- e.g. the scorecard has been dismissed.
+    /// Idempotent; safe to call even if nothing was ever retained.
+    public func releaseRecordings() {
+        recordedClips.removeAll()
+    }
+
     private func validate(id: String, text: String, role: ConversationVoiceTurn.Role) throws {
         guard !isClosed, !isFinishing else { throw VoicePayloadError.invalid("session.closed") }
         guard !entries.contains(where: { $0.id == id }), entries.count < 100,
@@ -121,6 +144,7 @@ public final class VoiceConversationSession: ObservableObject {
         defer { worker = nil }
         while !jobs.isEmpty, !isClosed {
             let job = jobs.removeFirst()
+            recordedClips[job.id] = job.clip
             let result: UserVoiceAnalysis
             do {
                 try Task.checkCancellation()

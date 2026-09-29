@@ -62,6 +62,15 @@ final class LiveLessonViewModel: ObservableObject {
     // case WordRevealText falls back to its WPM estimate.
     @Published private(set) var currentSpeechDuration: Double?
     @Published private(set) var isSynthesizingSpeech = false
+    // The real signal that the current NPC line's audio is still audibly
+    // playing -- driven by NPCVoiceService's own playback-finished callback,
+    // not by WordRevealText's text-reveal timer (which is only an estimate
+    // of speech duration, weighted by word length, and can finish before the
+    // real clip actually stops sounding). LiveRoleplayView combines this
+    // with its own reveal-complete signal so the character only returns to
+    // idle once BOTH are true -- see applySpeech() and appendWithoutSpeech()
+    // below for where this flips.
+    @Published private(set) var isAudioPlaying = false
     @Published private(set) var metCriteria: [String] = []
     @Published private(set) var deductionCount = 0
     @Published private(set) var turnNumber = 0
@@ -164,7 +173,7 @@ final class LiveLessonViewModel: ObservableObject {
                 appendWithoutSpeech(message)
                 return
             }
-            applySpeech(speech, to: message)
+            await applySpeech(speech, to: message)
         } catch {
             isSynthesizingSpeech = false
             guard !isAbandoned else { return }
@@ -215,7 +224,7 @@ final class LiveLessonViewModel: ObservableObject {
         currentSpeechDuration = nil
         if let speech = await task.value {
             isSynthesizingSpeech = false
-            applySpeech(speech, to: message)
+            await applySpeech(speech, to: message)
         } else {
             isSynthesizingSpeech = false
             appendWithoutSpeech(message)
@@ -226,7 +235,7 @@ final class LiveLessonViewModel: ObservableObject {
     // synthesis was in flight -- see isDismissed's doc above. Don't append
     // (nothing is watching `messages` anymore) and, above all, don't start
     // playback of a line for a screen that already closed.
-    private func applySpeech(_ speech: NPCVoiceService.Speech, to message: ConversationMessage) {
+    private func applySpeech(_ speech: NPCVoiceService.Speech, to message: ConversationMessage) async {
         guard !isDismissed else { return }
         currentSpeechDuration = speech.durationSeconds
         // Prepare (pre-buffer) playback BEFORE appending the message --
@@ -234,13 +243,53 @@ final class LiveLessonViewModel: ObservableObject {
         // warming up AVAudioPlayer ahead of that moment (rather than
         // constructing it and calling .play() afterward) tightens the
         // gap between the reveal starting and audio actually sounding.
-        let prepared = NPCVoiceService.shared.prepare(speech.audioData)
+        // The completion closure is the REAL "audio finished" signal
+        // (fired by NPCVoiceService on natural completion or an
+        // interrupting stop()) -- see isAudioPlaying's own doc above.
+        let prepared = NPCVoiceService.shared.prepare(speech.audioData) { [weak self] in
+            Task { @MainActor in self?.isAudioPlaying = false }
+        }
         messages.append(message)
-        if prepared { NPCVoiceService.shared.playPrepared() }
+        guard prepared else { return }
+        // `messages.append` above only SCHEDULES a SwiftUI update -- the
+        // actual reveal starting, and the character switching to its Talk
+        // clip because of it, both happen on a later run-loop tick, not
+        // synchronously with this call. playPrepared() below, on an
+        // already-buffered player, starts producing audible sound almost
+        // immediately. Without this gap the voice was reliably audible
+        // before the mouth visibly started moving, even though this
+        // function calls things in the "right" order -- a short, deliberate
+        // head start closes that real (not just source-order) gap.
+        try? await Task.sleep(nanoseconds: 150_000_000)
+        guard !isDismissed else { return }
+        isAudioPlaying = true
+        let generation = playbackGeneration
+        NPCVoiceService.shared.playPrepared()
+        // Safety net -- isAudioPlaying is meant to always resolve via the
+        // completion closure above (natural finish or an interrupting
+        // stop()), but if that signal is ever missed for any reason, this
+        // flag staying stuck true would permanently jam the character in
+        // its Talk animation and keep the composer/"View past dialogue"
+        // locked with no way out. Comfortably longer than the clip itself;
+        // only fires if the real signal never showed up, and does nothing
+        // if a later line has already started (a new playbackGeneration).
+        let duration = speech.durationSeconds
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64((duration + 5) * 1_000_000_000))
+            await MainActor.run {
+                guard let self, self.playbackGeneration == generation, self.isAudioPlaying else { return }
+                self.isAudioPlaying = false
+            }
+        }
     }
 
     private func appendWithoutSpeech(_ message: ConversationMessage) {
         guard !isDismissed else { return }
+        // No audio ever plays for this line (suppressed, or synthesis
+        // failed) -- isAudioPlaying was never set true for it, so the
+        // reveal-complete signal alone is enough to return the character
+        // to idle.
+        isAudioPlaying = false
         messages.append(message)
     }
 
@@ -431,6 +480,11 @@ final class LiveLessonViewModel: ObservableObject {
         stopSpeaking()
         voiceFinishTask?.cancel()
         voiceSession.cancel()
+        // Whole flow (including the scorecard) is going away for good --
+        // nothing can ask for playback after this, so release the retained
+        // recordings' temp files now rather than leaving that to whenever
+        // this view model happens to deinit.
+        voiceSession.releaseRecordings()
     }
 
     // Awaits the conversation-level voice-analysis assembly (bounded by the

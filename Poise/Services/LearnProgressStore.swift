@@ -243,11 +243,23 @@ final class LearnProgressStore: ObservableObject {
         // as a judge (see energy.js: JUDGE_CAP) -- isPremium is left alone so
         // a later RevenueCat sync doesn't fight this over Pro status, which
         // redeeming a judge code was never meant to claim.
+        //
+        // isJudge is fully server-authoritative here, in both directions --
+        // it used to only ever get set to true and never back to false, so a
+        // device that redeemed a judge code once (or reinstalled onto a new
+        // RevenueCat anonymous id after doing so) stayed stuck showing an
+        // inflated judge cap forever, regardless of what the CURRENT
+        // identity's real server ledger says. The comment above already
+        // states the intended rule -- "the server is the one counting" --
+        // this just actually applies it to isJudge too, not only remaining.
         if energy.cap > Self.premiumEnergyCap {
             isJudge = true
             judgeEnergyCap = energy.cap
-        } else if energy.cap != energyCap {
-            isPremium = energy.cap == Self.premiumEnergyCap
+        } else {
+            isJudge = false
+            if energy.cap != energyCap {
+                isPremium = energy.cap == Self.premiumEnergyCap
+            }
         }
         energyRemaining = max(0, min(energy.cap, energy.remaining))
         // Back-derive the anchor so the local countdown matches the server's
@@ -411,10 +423,7 @@ final class LearnProgressStore: ObservableObject {
         sessions.append(record)
         persistSessions()
         OneSignalNotificationService.shared.recordLessonCompleted()
-        OneSignalNotificationService.shared.synchronizeUserData(
-            isPro: SubscriptionStore.shared.isPro,
-            progress: self
-        )
+        OneSignalNotificationService.shared.synchronizeUserData(progress: self)
         // The scenario you just played is spent. Clearing it here -- and only
         // here -- is what makes "the lesson changes after you finish it" true.
         ScenarioCache.invalidate(lessonID: lessonID)
@@ -679,12 +688,13 @@ extension LearnProgressStore {
 
     var remainingThisWeek: Int { max(0, weeklyGoal - conversationsThisWeek) }
 
-    // One completed rubric item is worth 10 XP. This derives the OneSignal
-    // engagement tag from the same session ledger as the rest of Progress
-    // instead of storing another counter that could drift.
-    var weeklyXP: Int {
+    // Criteria met in the last 7 days, for the OneSignal weekly-summary tag
+    // -- paired with conversationsThisWeek above, both real numbers the
+    // Progress tab already shows, rather than an invented "XP" stat with no
+    // home anywhere in the app's own UI.
+    var criteriaMetThisWeek: Int {
         guard let cutoff = calendar.date(byAdding: .day, value: -6, to: calendar.startOfDay(for: now)) else { return 0 }
-        return sessions.filter { $0.finishedAt >= cutoff }.reduce(0) { $0 + ($1.criteriaMet * 10) }
+        return sessions.filter { $0.finishedAt >= cutoff }.reduce(0) { $0 + $1.criteriaMet }
     }
 
     // The seven days ending today, for the Learn page's activity strip.
