@@ -3,7 +3,7 @@ import { scoreVoiceMetrics } from './scoring.js';
 
 // Apple text is kept verbatim; normalization is only for counting lexical tokens.
 const normalize = (text) => text.toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
-const isFiller = (word) => ['um', 'uh'].includes(normalize(word.text));
+const isFiller = (word) => ['um', 'uh', 'ah'].includes(normalize(word.text));
 
 export function buildAppleReport(transcript, acoustic, config) {
   if (typeof transcript?.text !== 'string' || !transcript.text.trim() ||

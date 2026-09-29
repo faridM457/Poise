@@ -138,7 +138,7 @@ public struct VoiceLLMPayload: Sendable {
                 var interval: [String: Any] = ["start": start, "end": end]
                 if fillers {
                     guard let token = entry["text"] as? String, token.utf8.count <= 32,
-                          ["um", "uh"].contains(token.lowercased().trimmingCharacters(in: .punctuationCharacters)) else {
+                          ["um", "uh", "ah"].contains(token.lowercased().trimmingCharacters(in: .punctuationCharacters)) else {
                         throw VoicePayloadError.invalid("evidence.filler.text")
                     }
                     interval["text"] = token

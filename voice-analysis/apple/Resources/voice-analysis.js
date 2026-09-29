@@ -1090,7 +1090,7 @@ var PoiseVoice = (() => {
         value,
         unit: "events/100 words",
         target: [0, 2],
-        message: value === 0 ? "No um/uh fillers were detected (0 per 100 words); this does not establish that none were spoken." : `Detected ${round(value)} um/uh fillers per 100 words, ${value > 2 ? "above" : "within"} the provisional 0-2 target. Some spoken fillers may be missing.`
+        message: value === 0 ? "No um/uh/ah fillers were detected (0 per 100 words); this does not establish that none were spoken." : `Detected ${round(value)} um/uh/ah fillers per 100 words, ${value > 2 ? "above" : "within"} the provisional 0-2 target. Some spoken fillers may be missing.`
       });
     }
     if (add("pace", 0.45, "speakingRateWpm", (v) => bandScore(v, 60, 120, 180, 260))) {
@@ -1121,7 +1121,7 @@ var PoiseVoice = (() => {
 
   // src/apple-report.js
   var normalize = (text) => text.toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
-  var isFiller = (word) => ["um", "uh"].includes(normalize(word.text));
+  var isFiller = (word) => ["um", "uh", "ah"].includes(normalize(word.text));
   function buildAppleReport(transcript, acoustic, config) {
     if (typeof transcript?.text !== "string" || !transcript.text.trim() || !Array.isArray(transcript.words) || !Array.isArray(transcript.timingIssues) || !Number.isFinite(transcript.duration) || transcript.duration <= 0) {
       throw new Error("Invalid Apple transcription output");
