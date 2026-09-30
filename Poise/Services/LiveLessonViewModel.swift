@@ -31,7 +31,11 @@ final class LiveLessonViewModel: ObservableObject {
     // conversation-level payload at the end of the lesson (finishVoiceSession)
     // and sent alongside the existing turn/feedback data so the scorecard can
     // grade delivery the same way it grades clarity/empathy/resolution.
-    let voiceSession = VoiceConversationSession()
+    // Delivery analysis is a Poise Pro feature (a redeemed judge code counts,
+    // as for custom scenarios), decided once per lesson. Free users can still
+    // speak their turns and replay them; the recordings just aren't analyzed.
+    let deliveryAnalysisEnabled = SubscriptionStore.shared.isPro || LearnProgressStore.shared.isJudge
+    lazy var voiceSession = VoiceConversationSession(analyzesRecordings: deliveryAnalysisEnabled)
     @Published private(set) var voicePayload: Data?
     @Published private(set) var voiceAnalysisError: String?
     private var voiceFinishTask: Task<Void, Never>?
@@ -496,7 +500,7 @@ final class LiveLessonViewModel: ObservableObject {
     // means no delivery grading this run, never a blocked feedback call --
     // delivery is additive on top of the existing content grading.
     private func finishVoiceSessionAndSummarize() async -> [String: Any]? {
-        guard !isAbandoned, voiceAnalysisError == nil else {
+        guard !isAbandoned, deliveryAnalysisEnabled, voiceAnalysisError == nil else {
             voiceSession.cancel()
             return nil
         }
