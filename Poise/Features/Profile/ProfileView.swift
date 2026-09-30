@@ -425,8 +425,9 @@ private struct RedeemCodeCard: View {
 // All three are the same object: a white card holding rows separated by the
 // app's hairline, no internal headline (the section eyebrow above names it).
 
-// Two rows: microphone access and practice reminders. No separate "voice
-// practice" toggle --
+// Microphone access and practice reminders, plus "Ad privacy choices" for
+// users Google's consent message applies to. No separate "voice practice"
+// toggle --
 // speaking your turns instead of typing already works today (see
 // LiveLessonFlowView's mic button, backed by SpeechRecognitionService),
 // it's a plain button, not a mode to opt into.
@@ -447,6 +448,10 @@ private struct PrivacyCard: View {
     // NotificationService.isAuthorized), so there's no synchronous truth to
     // seed this @State with the way micAuthorized above is seeded.
     @State private var notificationsAuthorized = false
+    // Only users Google's consent message applies to (EEA, UK, Switzerland)
+    // get the "Ad privacy choices" row -- Google requires a way to change the
+    // choice later.
+    @ObservedObject private var adConsent = AdConsentManager.shared
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -464,6 +469,15 @@ private struct PrivacyCard: View {
                         subtitle: "A nudge to keep a streak alive, or a heads-up that your next lesson's ready.",
                         isOn: Binding(get: { notificationsAuthorized }, set: { _ in handleNotificationToggle() })
                     )
+                    if adConsent.privacyOptionsRequired {
+                        PoiseDivider().padding(.horizontal, 16)
+                        SettingsActionRow(
+                            title: "Ad privacy choices",
+                            subtitle: "Change what you agreed to for ads."
+                        ) {
+                            Task { await adConsent.presentPrivacyOptions() }
+                        }
+                    }
                 }
             }
 
@@ -818,6 +832,43 @@ private struct PoiseSwitchToggleStyle: ToggleStyle {
                     configuration.isOn.toggle()
                 }
         }
+    }
+}
+
+// A settings row that opens something rather than toggling -- same type
+// ladder and padding as SettingsToggleRow, with a chevron in the switch's place.
+private struct SettingsActionRow: View {
+    let title: String
+    let subtitle: String?
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(PoiseType.body(.bold))
+                        .foregroundStyle(Color.poiseNavy)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(PoiseType.caption())
+                            .foregroundStyle(Color.poiseMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Spacer(minLength: 12)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.poiseMuted)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityHint(subtitle ?? "")
     }
 }
 

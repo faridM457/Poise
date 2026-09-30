@@ -65,6 +65,11 @@ struct PoiseRootView: View {
                 showSignInPrompt = true
             }
             handleNotificationDestination()
+            // A first launch waits for onboarding to finish (see its
+            // onDismiss) so the consent message isn't stacked on top of it.
+            if !showOnboarding {
+                await gatherAdConsentIfNeeded()
+            }
             await syncEnergyFromServer()
         }
         // Prefetched here, at launch, rather than left to PaywallSheet's own
@@ -105,6 +110,7 @@ struct PoiseRootView: View {
         // onDismiss is the one place that needs to mark it shown.
         .fullScreenCover(isPresented: $showOnboarding, onDismiss: {
             OnboardingStore.markShown()
+            Task { await gatherAdConsentIfNeeded() }
             // Only the debug replay chains straight into the sign-in prompt --
             // see isDebugReplayingFirstLaunch's own comment for why a real
             // first launch doesn't do this here.
@@ -169,6 +175,13 @@ struct PoiseRootView: View {
     // already running). customScenario's id isn't resolved to anything --
     // there's no "resume a specific generated scenario" concept in the real
     // engine-backed flow -- so it just opens the builder fresh.
+    // Pro users never see ads, so they're never asked for ad consent. If Pro
+    // lapses, the next launch asks.
+    private func gatherAdConsentIfNeeded() async {
+        guard !SubscriptionStore.shared.isPro else { return }
+        await AdConsentManager.shared.gatherConsent()
+    }
+
     private func handleNotificationDestination() {
         guard let destination = notificationRouter.consume() else { return }
         switch destination {
