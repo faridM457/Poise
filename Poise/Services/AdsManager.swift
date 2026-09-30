@@ -44,9 +44,17 @@ final class AdsManager: NSObject {
         // The delegate is passed in here, not assigned afterward -- the
         // adapter holds it weakly and wires its own forwarding, so setting
         // ad.fullScreenContentDelegate post-load would override that.
+        // npa=1 asks Google for non-personalized ads only. The privacy policy
+        // promises non-personalized ads, and that promise is also why the app
+        // has no App Tracking Transparency prompt -- a plain Request() still
+        // lets Google personalize from other signals even without the IDFA.
+        let request = Request()
+        let extras = Extras()
+        extras.additionalParameters = ["npa": "1"]
+        request.register(extras)
         InterstitialAd.loadAndTrack(
             withAdUnitID: unitID,
-            request: Request(),
+            request: request,
             placement: "lesson_scorecard",
             fullScreenContentDelegate: self
         ) { [weak self] ad, error in
