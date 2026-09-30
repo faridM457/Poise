@@ -38,6 +38,7 @@ struct LiveLessonFlowView: View {
 
     @StateObject private var viewModel: LiveLessonViewModel
     @State private var step: Step = .briefing
+    @State private var didRecordCompletion = false
     @State private var showOutOfEnergy = false
     // Lifted out of LiveRoleplayView so the character layer below can be
     // mounted once for the whole flow. Idle except while an NPC line is
@@ -113,7 +114,7 @@ struct LiveLessonFlowView: View {
 
     private var content: some View {
         VStack(spacing: 0) {
-            LessonProgressHeader(step: stepIndex, total: stepTotal, label: stepLabel, onExit: { onFinish(false) })
+            LessonProgressHeader(step: stepIndex, total: stepTotal, label: stepLabel, onExit: exit)
             Group {
                 if viewModel.isLoadingScenario {
                     LiveLoadingView(text: "Generating your scenario...")
@@ -207,14 +208,7 @@ struct LiveLessonFlowView: View {
     // results and the skill badges are reading what the engine actually said
     // about this conversation, not a count inferred afterwards.
     private func recordAndFinish() {
-        if let feedback = viewModel.feedback {
-            LearnProgressStore.shared.recordCompletion(
-                lessonID: engineLessonId,
-                skillLevels: feedback.skillLevels,
-                criteriaMet: feedback.checklist.filter(\.met).count,
-                criteriaTotal: feedback.checklist.count
-            )
-        }
+        recordCompletionIfGraded()
         // Free-tier only. If no ad is ready (still loading, failed, or
         // unconfigured), the completion fires immediately -- see
         // AdsManager.presentInterstitial.
@@ -227,6 +221,30 @@ struct LiveLessonFlowView: View {
         AdsManager.shared.presentInterstitial { [onFinish] in
             onFinish(true)
         }
+    }
+
+    // Closing with the header's X on a graded scorecard still counts: the
+    // conversation happened and was scored. It used to exit without
+    // recording, which left the lesson showing as "Up next". No ad on this
+    // path -- the user chose to leave.
+    private func exit() {
+        if step == .scorecard {
+            recordCompletionIfGraded()
+            onFinish(viewModel.feedback != nil)
+        } else {
+            onFinish(false)
+        }
+    }
+
+    private func recordCompletionIfGraded() {
+        guard !didRecordCompletion, let feedback = viewModel.feedback else { return }
+        didRecordCompletion = true
+        LearnProgressStore.shared.recordCompletion(
+            lessonID: engineLessonId,
+            skillLevels: feedback.skillLevels,
+            criteriaMet: feedback.checklist.filter(\.met).count,
+            criteriaTotal: feedback.checklist.count
+        )
     }
 
     private func startRoleplay() {
