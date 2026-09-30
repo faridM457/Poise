@@ -24,9 +24,17 @@ struct CachedScenario: Codable {
 // visit gets a genuinely new situation. See LearnProgressStore.recordCompletion.
 @MainActor
 enum ScenarioCache {
-    private static let key = "poise.scenarioCache"
+    // Bump the version when scenario generation changes in a way that makes
+    // already-cached scenarios wrong. v2: the engine sometimes swapped roles
+    // (the report in "Letting Someone Go" fired the user); scenarios cached
+    // before the fix would otherwise stick until each lesson was completed.
+    private static let key = "poise.scenarioCache.v2"
+    private static let retiredKeys = ["poise.scenarioCache"]
 
     private static func load() -> [String: CachedScenario] {
+        for retired in retiredKeys where UserDefaults.standard.object(forKey: retired) != nil {
+            UserDefaults.standard.removeObject(forKey: retired)
+        }
         guard let data = UserDefaults.standard.data(forKey: key),
               let decoded = try? JSONDecoder().decode([String: CachedScenario].self, from: data)
         else { return [:] }

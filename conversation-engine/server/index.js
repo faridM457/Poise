@@ -295,6 +295,12 @@ app.post("/api/feedback", rateLimit("feedback", { limit: 15 }), requireConversat
     if (!lesson) return res.status(404).json({ error: "Unknown or invalid lesson" });
     const { scenario, history, metCriteria, deductionCount, resolution, empathyLevels, voiceSummary } = req.body;
 
+    // Delivery grading from voice analysis is a Pro feature (a redeemed judge
+    // code counts, same as custom scenarios). The app already withholds the
+    // summary for free users; this keeps the server from grading one anyway.
+    const energyRow = await getState(req.poiseUser, { verifyPro });
+    const deliveryAllowed = energyRow.is_pro || energyRow.is_judge;
+
     const feedback = await generateFeedback({
       lesson,
       scenario,
@@ -303,10 +309,9 @@ app.post("/api/feedback", rateLimit("feedback", { limit: 15 }), requireConversat
       deductionCount,
       resolution,
       empathyLevels,
-      voiceSummary: isValidVoiceSummary(voiceSummary) ? voiceSummary : null,
+      voiceSummary: deliveryAllowed && isValidVoiceSummary(voiceSummary) ? voiceSummary : null,
     });
 
-    const energyRow = await getState(req.poiseUser, { verifyPro });
     res.json({ ...feedback, energy: publicState(energyRow) });
   } catch (err) {
     console.error(err);

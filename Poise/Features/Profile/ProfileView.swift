@@ -425,8 +425,8 @@ private struct RedeemCodeCard: View {
 // All three are the same object: a white card holding rows separated by the
 // app's hairline, no internal headline (the section eyebrow above names it).
 
-// Two rows: a real microphone-access toggle, plus the still-unbuilt
-// "save the audio" preference. No separate "voice practice" toggle --
+// Two rows: microphone access and practice reminders. No separate "voice
+// practice" toggle --
 // speaking your turns instead of typing already works today (see
 // LiveLessonFlowView's mic button, backed by SpeechRecognitionService),
 // it's a plain button, not a mode to opt into.
@@ -455,7 +455,7 @@ private struct PrivacyCard: View {
                 VStack(spacing: 0) {
                     SettingsToggleRow(
                         title: "Microphone access",
-                        subtitle: "Needed to speak your turns instead of typing them.",
+                        subtitle: "Needed to speak your turns instead of typing them. With Pro, your delivery is also analyzed on this device.",
                         isOn: Binding(get: { micAuthorized }, set: { _ in handleMicToggle() })
                     )
                     PoiseDivider().padding(.horizontal, 16)
@@ -464,17 +464,13 @@ private struct PrivacyCard: View {
                         subtitle: "A nudge to keep a streak alive, or a heads-up that your next lesson's ready.",
                         isOn: Binding(get: { notificationsAuthorized }, set: { _ in handleNotificationToggle() })
                     )
-                    PoiseDivider().padding(.horizontal, 16)
-                    SettingsToggleRow(
-                        title: "Save recordings",
-                        subtitle: "Keep the audio from a session for your own review. Off by default. Coming soon.",
-                        isOn: .constant(false)
-                    )
-                    .disabled(true)
                 }
             }
 
-            FootNote("Nothing is recorded or uploaded. These settings stay on this device.")
+            // Recordings stay on this device and are deleted once the lesson closes;
+            // what does leave the device is the conversation text (and, for Pro,
+            // the delivery numbers), sent to Poise's server for replies and grading.
+            FootNote("Your voice recordings never leave this device and are deleted when the lesson ends. What you say, as text, is sent to Poise's server to write replies and grade the conversation.")
         }
         .task {
             notificationsAuthorized = await NotificationService.isAuthorized
@@ -947,10 +943,8 @@ struct PaywallSheet: View {
     private let benefits: [(icon: String, title: String, detail: String)] = [
         ("bolt.fill", "12 energy, refilling 4x faster",
          "One back every 2 hours instead of every 8."),
-        // Marked because neither is built yet -- the paywall should not read
-        // as if paying today unlocks them.
-        ("waveform", "Voice analysis", "Pace, clarity and tone. Coming soon."),
-        ("wand.and.stars", "Build your own scenarios", "Practice the conversation you're dreading. Coming soon."),
+        ("waveform", "Voice analysis", "Pace, pitch and filler words, graded."),
+        ("wand.and.stars", "Build your own scenarios", "Practice the conversation you're dreading."),
         ("hand.raised.slash.fill", "No ads", "Pro never interrupts a debrief."),
     ]
 

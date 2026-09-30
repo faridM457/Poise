@@ -43,13 +43,18 @@ public final class VoiceConversationSession: ObservableObject {
     // own deinit if that's never called explicitly.
     private var recordedClips: [String: RecordedVoiceClip] = [:]
 
-    public convenience init(conversationID: String = UUID().uuidString) {
+    // When false, recordings are kept for playback but never analyzed --
+    // for users without access to delivery analysis.
+    private let analyzesRecordings: Bool
+
+    public convenience init(conversationID: String = UUID().uuidString, analyzesRecordings: Bool = true) {
         let analyzer = OnDeviceVoiceAnalyzer()
-        self.init(conversationID: conversationID, analyze: { try await analyzer.analyze(fileURL: $0) })
+        self.init(conversationID: conversationID, analyzesRecordings: analyzesRecordings, analyze: { try await analyzer.analyze(fileURL: $0) })
     }
 
-    init(conversationID: String, analyze: @escaping @Sendable (URL) async throws -> VoiceAnalysisReport) {
+    init(conversationID: String, analyzesRecordings: Bool = true, analyze: @escaping @Sendable (URL) async throws -> VoiceAnalysisReport) {
         self.conversationID = conversationID
+        self.analyzesRecordings = analyzesRecordings
         self.analyze = analyze
     }
 
@@ -66,6 +71,9 @@ public final class VoiceConversationSession: ObservableObject {
         case .typed: voice = .typed
         case .missingAudio: voice = .missingAudio
         case .failed(let code): voice = .failed(code)
+        case .recorded(let clip) where !analyzesRecordings:
+            recordedClips[id] = clip
+            voice = .missingAudio
         case .recorded(let clip):
             // Preserve the dialogue when the recording budget is exhausted.
             if recordingSeconds + clip.durationSeconds > 300.05 {

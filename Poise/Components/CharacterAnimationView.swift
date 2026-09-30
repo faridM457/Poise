@@ -79,20 +79,18 @@ enum CharacterAppearance: String, CaseIterable {
         }
     }
 
-    // Pocket TTS voice index for this character model (see NPCVoiceService
-    // and PocketTTSModelStaging's voiceNames for the full 8-voice catalog).
-    // Picked from PocketTTSSwift.voices' own name/gender/description
-    // metadata, not guessed: Jean ("gentle male") was already Char1's
-    // voice; Char2 gets Marius ("warm male") -- distinct from Jean but
-    // similarly general-purpose rather than a narrowly-typecast voice like
-    // Javert's "authoritative"; Char3 gets Alba, the one voice Pocket TTS
-    // itself labels "neutral" among the female options, matching why Jean
-    // (not a more typecast voice) was chosen for Char1's do-everything role.
+    // Pocket TTS voice slot for this character model (see NPCVoiceService
+    // and PocketTTSModelStaging). Each slot's file holds a custom voice
+    // cloned from a recording made for that character -- the engine only
+    // loads its 8 hardcoded file names, so the custom voices replaced the
+    // original jean/marius/alba embeddings in place. Built with pocket-tts
+    // 1.0.0, the release whose voice encoding matches this engine's model
+    // (a newer release's embeddings came out measurably different).
     var voiceIndex: UInt32 {
         switch self {
-        case .char1: return 3 // Jean -- gentle male voice
-        case .char2: return 1 // Marius -- warm male voice
-        case .char3: return 0 // Alba -- clear, neutral female voice
+        case .char1: return 3 // jean slot -- male2 recording
+        case .char2: return 1 // marius slot -- male1 recording
+        case .char3: return 0 // alba slot -- female recording
         }
     }
 }

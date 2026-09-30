@@ -61,7 +61,12 @@ fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
 
-# Pocket TTS large runtime assets (not checked in -- source separately)
+# Pocket TTS large runtime assets (not checked in -- source separately).
+# The PocketTTS.xcframework libraries are built from UnaMentis/pocket-tts-ios
+# at commit ce0a41d (unreleased main; v0.4.1 lacks the Mimi decoder attention
+# fix that removes the robotic/echo-y sound) with its scripts/build-ios.sh. The
+# checked-in headers and Poise/Services/PocketTTS/pocket_tts_ios.swift must
+# come from the same build, or the engine fails its binding checks at load.
 Poise/Resources/Models/model.safetensors
 Poise/Resources/Models/tokenizer.model
 Frameworks/PocketTTS.xcframework/*/*.a

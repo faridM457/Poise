@@ -1200,6 +1200,8 @@ private struct LiveScorecardView: View {
                     if feedback.skillLevels[.delivery] != nil,
                        let rows = VoiceDeliveryMetrics.rows(from: viewModel.voicePayload) {
                         DeliveryMetricsCard(rows: rows)
+                    } else if !viewModel.deliveryAnalysisEnabled {
+                        DeliveryProTeaserCard()
                     }
 
                     // Was the last block on this screen still wearing the
@@ -1362,6 +1364,33 @@ private struct DeliveryMetricsCard: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+// Shown in place of DeliveryMetricsCard for users without Poise Pro, whose
+// recordings are never analyzed (see LiveLessonViewModel.deliveryAnalysisEnabled).
+private struct DeliveryProTeaserCard: View {
+    var body: some View {
+        PoiseSection(title: "Delivery, measured") {
+            PoiseSurfaceCard {
+                HStack(alignment: .top, spacing: 14) {
+                    PoiseIconBadge(icon: "waveform.path", color: .poiseGold)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Voice analysis is part of Poise Pro")
+                            .font(PoiseType.body(.bold))
+                            .foregroundStyle(Color.poiseNavy)
+                        Text("Upgrade to see your pace, pitch variation, and filler words, and get a delivery grade after every spoken lesson.")
+                            .font(PoiseType.caption())
+                            .foregroundStyle(Color.poiseMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 }
 

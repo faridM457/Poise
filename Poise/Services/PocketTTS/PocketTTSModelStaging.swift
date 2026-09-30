@@ -18,11 +18,18 @@ enum PocketTTSModelStaging {
     // list) -- forces re-staging instead of reusing a stale Caches copy
     // from a previous build (this bump itself fixes exactly that: earlier
     // builds staged only "jean", leaving other voice indices unattached).
-    private static let stagingVersion = 2
+    // v3: alba/marius/jean were replaced with Poise's own character voices;
+    // without the bump, devices that already staged v2 would keep the old
+    // voices, since staging never overwrites an existing file. v4: the same
+    // voices re-encoded from loudness-normalized recordings (v3's were quiet).
+    private static let stagingVersion = 4
 
-    // Every bundled voice embedding, in the exact index order the demo
-    // harness's TTSVoice enum and this app's jeanVoiceIndex assume:
-    // 0 Alba, 1 Marius, 2 Javert, 3 Jean, 4 Fantine, 5 Cosette, 6 Eponine, 7 Azelma.
+    // Every bundled voice embedding, in the exact index order the engine
+    // expects: 0 Alba, 1 Marius, 2 Javert, 3 Jean, 4 Fantine, 5 Cosette,
+    // 6 Eponine, 7 Azelma. The engine hardcodes these 8 file names, so
+    // custom voices go in existing slots rather than new files. The alba,
+    // marius and jean files now hold Poise's character voices (see
+    // CharacterAppearance.voiceIndex), not the original Pocket TTS voices.
     private static let voiceNames = ["alba", "marius", "javert", "jean", "fantine", "cosette", "eponine", "azelma"]
 
     enum StagingError: Error, LocalizedError {
@@ -41,6 +48,7 @@ enum PocketTTSModelStaging {
     static func stagedModelDirectory() throws -> URL {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         let modelDir = caches.appendingPathComponent("PocketTTSModel-v\(stagingVersion)", isDirectory: true)
+        removeOutdatedStagings(in: caches, keeping: modelDir.lastPathComponent)
         let voicesDir = modelDir.appendingPathComponent("voices", isDirectory: true)
         try FileManager.default.createDirectory(at: voicesDir, withIntermediateDirectories: true)
 
@@ -51,6 +59,15 @@ enum PocketTTSModelStaging {
         }
 
         return modelDir
+    }
+
+    // Each staging version holds its own full copy of the ~235 MB model, so
+    // bumping stagingVersion would otherwise leave the old copies behind.
+    private static func removeOutdatedStagings(in caches: URL, keeping current: String) {
+        let entries = (try? FileManager.default.contentsOfDirectory(atPath: caches.path)) ?? []
+        for entry in entries where entry.hasPrefix("PocketTTSModel-v") && entry != current {
+            try? FileManager.default.removeItem(at: caches.appendingPathComponent(entry))
+        }
     }
 
     private static func stageIfNeeded(bundleResource: String, ext: String, to destination: URL) throws {
