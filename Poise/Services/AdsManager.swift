@@ -33,6 +33,12 @@ final class AdsManager: NSObject {
             logger.notice("preload skipped: no ad unit ID configured for this build")
             return
         }
+        // No ad requests until Google's consent check allows them (always
+        // true outside the EEA, UK and Switzerland) -- see AdConsentManager.
+        guard AdConsentManager.shared.canRequestAds else {
+            logger.notice("preload skipped: consent does not allow ad requests yet")
+            return
+        }
         guard interstitial == nil, !isLoading else {
             logger.notice("preload skipped: already have one ready or in flight")
             return
