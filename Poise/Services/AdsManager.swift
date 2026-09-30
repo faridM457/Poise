@@ -81,15 +81,19 @@ final class AdsManager: NSObject {
     // a missing ad must never block the user from finishing their lesson.
     func presentInterstitial(completion: @escaping () -> Void) {
         let hadAdReady = interstitial != nil
-        guard let interstitial, let root = UIApplication.shared.poiseRootViewController else {
-            logger.notice("present SKIPPED: adReady=\(hadAdReady), rootViewControllerFound=\(UIApplication.shared.poiseRootViewController != nil)")
+        // The frontmost view controller, not the window's root: the lesson is a
+        // full-screen cover over the root, and presenting from a view
+        // controller that's already presenting something fails silently --
+        // which is why the post-lesson ad never appeared.
+        guard let interstitial, let presenter = UIApplication.shared.poiseTopViewController else {
+            logger.notice("present SKIPPED: adReady=\(hadAdReady), presenterFound=\(UIApplication.shared.poiseTopViewController != nil)")
             completion()
             return
         }
         logger.notice("presenting ad now")
         self.interstitial = nil
         dismissalCompletion = completion
-        interstitial.present(from: root)
+        interstitial.present(from: presenter)
     }
 }
 
@@ -102,19 +106,10 @@ extension AdsManager: FullScreenContentDelegate {
     }
 
     func ad(_ ad: any FullScreenPresentingAd, didFailToPresentFullScreenContentWithError error: Error) {
+        logger.error("present FAILED: \(error.localizedDescription, privacy: .public)")
         let completion = dismissalCompletion
         dismissalCompletion = nil
         completion?()
         preloadInterstitial()
-    }
-}
-
-private extension UIApplication {
-    var poiseRootViewController: UIViewController? {
-        connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap(\.windows)
-            .first(where: \.isKeyWindow)?
-            .rootViewController
     }
 }
