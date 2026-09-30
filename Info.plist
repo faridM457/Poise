@@ -27,7 +27,7 @@
 	     typing it, via Apple's on-device Speech framework (SFSpeechRecognizer).
 	     No audio is sent anywhere off-device for this. -->
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Poise uses your microphone so you can speak your response instead of typing it.</string>
+	<string>Poise uses your microphone so you can speak your response instead of typing it. With Poise Pro, your recording is also analyzed on your device for pace, pitch and filler words. Recordings never leave your device.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Poise transcribes your spoken response on-device so you can review it before sending.</string>
 	<!-- Poise's real AdMob app ID. There is only one Info.plist for both
