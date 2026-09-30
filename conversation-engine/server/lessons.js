@@ -342,6 +342,8 @@ export const lessons = [
     unit: "Unit 3: Boundaries & Difficult Asks",
     title: "Turning Down a Report's Request",
     isCheckpoint: false,
+    // Cass made the request before this conversation; the user's job is the answer, not raising it.
+    npcInitiatesWithKnownRequest: true,
     difficultyLabel: "guarded",
     character: {
       name: "Cass",
@@ -447,6 +449,8 @@ export const lessons = [
     unit: "Unit 3: Boundaries & Difficult Asks",
     title: "Checkpoint: Holding the Line Under Pressure",
     isCheckpoint: true,
+    // Devon already asked for the stretch role; the user's job is the answer, not raising it.
+    npcInitiatesWithKnownRequest: true,
     difficultyLabel: "resistant",
     character: {
       name: "Devon",
@@ -671,7 +675,8 @@ export const lessons = [
       relationship: "Documented pattern; informal feedback has already been tried",
     },
     scenarioTemplate:
-      "FORMAL: informal feedback has already failed and this is the documented performance " +
+      "FORMAL: the user is Jonah's manager and runs this conversation; it is Jonah's performance under " +
+      "review, not the user's. Informal feedback has already failed and this is the documented performance " +
       "conversation, with a stated consequence and timeline. LOCKED: the outcome is not a discussion " +
       "about whether the pattern exists -- it is the formalization of a consequence.",
     criteria: [
@@ -724,9 +729,10 @@ export const lessons = [
       relationship: "2 years on the team; this is their final conversation with the user",
     },
     scenarioTemplate:
-      "TERMINATION: the decision is made, final and not reversible, and the working relationship ends " +
-      "after this conversation. LOCKED: nothing the report says can change the outcome, and the user " +
-      "must not imply otherwise or re-open the reasoning.",
+      "TERMINATION: the user is Cass's manager and is the one delivering the news; Cass is the one " +
+      "being let go, not the user. The decision is made, final and not reversible, and the working " +
+      "relationship ends after this conversation. LOCKED: nothing the report says can change the " +
+      "outcome, and the user must not imply otherwise or re-open the reasoning.",
     criteria: [
       "State the decision plainly, early in the conversation",
       "Explain the reasoning briefly, without over-justifying",
@@ -750,6 +756,8 @@ export const lessons = [
       relationship: "At the end of a documented performance process",
     },
     scenarioTemplate:
+      "The user is Reese's manager; it is Reese's performance and Reese's employment on the line, " +
+      "never the user's. " +
       "COMBINES a formal performance conversation with a possible termination in the SAME session: " +
       "depending on how the user handles it, the conversation can turn into ending the employment. " +
       "LOCKED: both outcomes are genuinely live at the start, and the turn happens mid-conversation.",
@@ -759,7 +767,7 @@ export const lessons = [
       "Leave the person with concrete next steps either way",
     ],
     personaNotes:
-      "Reese opens by raising an outside option, which shifts the footing immediately. Wants to know " +
+      "Early on, once the user has opened, Reese raises an outside option, which shifts the footing immediately. Wants to know " +
       "exactly where they stand before deciding anything, and notices any wavering.",
     demoExchange: DEMOS.resistant,
   },
